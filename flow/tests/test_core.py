@@ -69,7 +69,6 @@ class TestFlow(unittest.TestCase):
         tx2 = add(tx1)
 
         engine.start(t1, t2)
-        # engine.show_graph(show_edge_label=True)
 
         self.assertEqual(tx1(), [(datetime(2016, 8, 1, 10, 11, 12), 2), (datetime(2016, 8, 1, 10, 11, 13), 3)])
         self.assertEqual(tx2(), [(datetime(2016, 8, 1, 10, 11, 12), 3), (datetime(2016, 8, 1, 10, 11, 13), 4)])
