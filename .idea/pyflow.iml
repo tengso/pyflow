@@ -4,12 +4,6 @@
     <content url="file://$MODULE_DIR$" />
     <orderEntry type="jdk" jdkName="Python 3.5.1 (~/anaconda_24_3/anaconda/bin/python)" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
-    <orderEntry type="module" module-name="bitcoin" />
-    <orderEntry type="module" module-name="training" />
-    <orderEntry type="module" module-name="apm" />
-    <orderEntry type="module" module-name="qepm" />
-    <orderEntry type="module" module-name="tensorflow" />
-    <orderEntry type="module" module-name="wukong" />
   </component>
   <component name="PackageRequirementsSettings">
     <option name="requirementsPath" value="" />

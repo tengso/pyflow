@@ -1,3 +1,5 @@
+from typing import Sequence, Tuple, Any
+
 import datetime
 from datetime import timedelta
 import logging
@@ -5,6 +7,8 @@ import heapq
 from collections import OrderedDict
 import graphviz as gv
 from inspect import signature
+
+from abc import abstractmethod
 
 
 class NodeRegistry(object):
@@ -280,7 +284,7 @@ def init_wrapper(orig_init, input_names, positions):
         for index, arg in enumerate(args):
             if index in positions:
                 if not (isinstance(arg, OutputNode) or isinstance(arg, Flow)):
-                    raise TypeError('{} is not of type Output'.format(arg))
+                    raise TypeError('{} with type {} is not of type Output'.format(arg, type(arg)))
                 setattr(instance, positions[index], arg)
 
     return wrapper
@@ -677,7 +681,8 @@ class EagerSource(Source):
         self._output = self.data[self.index][1]
         self.index += 1
 
-    def get_all_events(self, start_time, end_time):
+    @abstractmethod
+    def get_all_events(self, start_time, end_time) -> Sequence[Tuple[datetime.datetime, Any]]:
         pass
 
 
@@ -716,6 +721,7 @@ class LazySource(Source):
 
     def get_next_event(self, start_time, end_time):
         pass
+
 
 
 class IntervalTimer(LazySource):
@@ -805,6 +811,59 @@ class Map3(Flow):
     def do_map(self):
         if self.input1 and self.input2 and self.input3:
             self << self.map_fun(self.input1(), self.input2(), self.input3())
+
+    def __str__(self):
+        if self.name is not None:
+            return self.name
+        else:
+            return str(super())
+
+
+class Map6(Flow):
+    input1 = Input()
+    input2 = Input()
+    input3 = Input()
+    input4 = Input()
+    input5 = Input()
+    input6 = Input()
+
+    def __init__(self, input1, input2, input3, input4, input5, input6, map_fun, name='map3'):
+        super().__init__(name)
+        self.map_fun = map_fun
+
+    @when(input1, input2, input3, input4, input5, input6)
+    def do_map(self):
+        if self.input1 and self.input2 and self.input3:
+            self << self.map_fun(self.input1(), self.input2(), self.input3(), self.input4(), self.input5(),
+                                 self.input6())
+
+    def __str__(self):
+        if self.name is not None:
+            return self.name
+        else:
+            return str(super())
+
+
+class Map9(Flow):
+    input1 = Input()
+    input2 = Input()
+    input3 = Input()
+    input4 = Input()
+    input5 = Input()
+    input6 = Input()
+    input7 = Input()
+    input8 = Input()
+    input9 = Input()
+
+    def __init__(self, input1, input2, input3, input4, input5, input6, input7, input8, input9, map_fun, name='map3'):
+        super().__init__(name)
+        self.map_fun = map_fun
+
+    @when(input1, input2, input3, input4, input5, input6, input7, input8, input9)
+    def do_map(self):
+        if self.input1 and self.input2 and self.input3:
+            self << self.map_fun(self.input1(), self.input2(), self.input3(), self.input4(), self.input5(),
+                                 self.input6(), self.input7(), self.input8(), self.input9())
 
     def __str__(self):
         if self.name is not None:
@@ -1011,7 +1070,7 @@ class Engine:
                 n.evaluate()
 
     def show_graph(self, file_name='graph', show_cycle=False, show_edge_label=True):
-        graph = gv.Digraph()
+        graph = gv.Digraph(engine='dot')
 
         def add_node(node):
             name = node.get_name()
@@ -1048,7 +1107,7 @@ class Engine:
 def flatten(inputs):
     def flatten_internal(input, rest):
         if len(rest):
-            f = Flatten2(input, rest[0, 'flatten'])
+            f = Flatten2(input, rest[0], 'flatten')
             return flatten_internal(f, rest[1:])
         else:
             return input
@@ -1085,6 +1144,54 @@ class lift:
                 input1.get_engine().add_source(input3)
             return Map3(input1, input2, input3, fun, fun.__name__ if self.name is None else self.name)
 
-        mapped = {1: map, 2: map2, 3: map3}
+        def map6(input1, input2, input3, input4, input5, input6):
+            if not isinstance(input2, Flow):
+                input2 = Constant(input2)
+                input1.get_engine().add_source(input2)
+            if not isinstance(input3, Flow):
+                input3 = Constant(input3)
+                input1.get_engine().add_source(input3)
+            if not isinstance(input4, Flow):
+                input4 = Constant(input4)
+                input1.get_engine().add_source(input4)
+            if not isinstance(input5, Flow):
+                input5 = Constant(input5)
+                input1.get_engine().add_source(input5)
+            if not isinstance(input6, Flow):
+                input6 = Constant(input6)
+                input1.get_engine().add_source(input6)
+
+            return Map6(input1, input2, input3, input4, input5, input6, fun,
+                        fun.__name__ if self.name is None else self.name)
+
+        def map9(input1, input2, input3, input4, input5, input6, input7, input8, input9):
+            if not isinstance(input2, Flow):
+                input2 = Constant(input2)
+                input1.get_engine().add_source(input2)
+            if not isinstance(input3, Flow):
+                input3 = Constant(input3)
+                input1.get_engine().add_source(input3)
+            if not isinstance(input4, Flow):
+                input4 = Constant(input4)
+                input1.get_engine().add_source(input4)
+            if not isinstance(input5, Flow):
+                input5 = Constant(input5)
+                input1.get_engine().add_source(input5)
+            if not isinstance(input6, Flow):
+                input6 = Constant(input6)
+                input1.get_engine().add_source(input6)
+            if not isinstance(input7, Flow):
+                input7 = Constant(input7)
+                input1.get_engine().add_source(input7)
+            if not isinstance(input8, Flow):
+                input8 = Constant(input8)
+                input1.get_engine().add_source(input8)
+            if not isinstance(input9, Flow):
+                input9 = Constant(input9)
+                input1.get_engine().add_source(input9)
+            return Map9(input1, input2, input3, input4, input5, input6, input7, input8, input9,
+                        fun, fun.__name__ if self.name is None else self.name)
+
+        mapped = {1: map, 2: map2, 3: map3, 6: map6, 9: map9}
         sig = signature(fun)
         return mapped[len(sig.parameters.keys())]
