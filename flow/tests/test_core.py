@@ -1,4 +1,3 @@
-import pandas as pd
 import unittest
 
 from datetime import datetime

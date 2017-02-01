@@ -320,83 +320,79 @@ class FlowOps:
         # TODO: better check
         if self.__class__ != Flow:
             self.warn('created map for {}:{}', self, item)
-            return Map(self, lambda value: getattr(value, item), item)
+            return MapN(item, lambda value: getattr(value, item), self)
 
     def __mul__(self, other):
         if not isinstance(other, FlowBase):
             other = Constant(other)
             self.get_engine().add_source(other)
 
-        return Map2(self, other, lambda input1, input2: input1 * input2, 'mul(*)')
+        return MapN('mul(*)', lambda input1, input2: input1 * input2, self, other)
 
     def __rmul__(self, other):
         if not isinstance(other, FlowBase):
             other = Constant(other)
             self.get_engine().add_source(other)
 
-        return Map2(other, self, lambda input1, input2: input1 * input2, 'mul(*)')
+        return MapN('mul(*)', lambda input1, input2: input1 * input2, other, self)
 
     def __sub__(self, other):
         if not isinstance(other, FlowBase):
             other = Constant(other)
             self.get_engine().add_source(other)
 
-        return Map2(self, other, lambda input1, input2: input1 - input2, 'sub(-)')
+        return MapN('sub(-)', lambda input1, input2: input1 - input2, self, other)
 
     def __rsub__(self, other):
         if not isinstance(other, FlowBase):
             other = Constant(other)
             self.get_engine().add_source(other)
 
-        return Map2(other, self, lambda input1, input2: input1 - input2, 'sub(-)')
+        return MapN('sub(-)', lambda input1, input2: input1 - input2, other, self)
 
     def __add__(self, other):
         if not isinstance(other, FlowBase):
             other = Constant(other)
             self.get_engine().add_source(other)
 
-        return Map2(self, other, lambda input1, input2: input1 + input2, 'add(+)')
+        return MapN('add(+)', lambda input1, input2: input1 + input2, self, other)
 
     def __radd__(self, other):
         if not isinstance(other, FlowBase):
             other = Constant(other)
             self.get_engine().add_source(other)
 
-        return Map2(other, self, lambda input1, input2: input1 + input2, 'add(+)')
+        return MapN('add(+)', lambda input1, input2: input1 + input2, other, self)
 
     def __pow__(self, other):
         if not isinstance(other, FlowBase):
             other = Constant(other)
             self.get_engine().add_source(other)
 
-        return Map2(self, other, lambda input1, input2: input1 ** input2, 'pow(**)')
+        return MapN('pow(**)', lambda input1, input2: input1 ** input2, self, other)
 
     def __abs__(self):
-        return Map(self, lambda input: abs(input), 'abs')
+        return MapN('abs', lambda input: abs(input), self)
 
     def __neg__(self):
-        return Map(self, lambda input: -input, 'neg(-)')
+        return MapN('neg(-)', lambda input: -input, self)
 
     def __pos__(self):
-        return Map(self, lambda input: +input, 'pos(+)')
+        return MapN('pos(+)', lambda input: +input, self)
 
     def __truediv__(self, other):
         if not isinstance(other, FlowBase):
             other = Constant(other)
             self.get_engine().add_source(other)
 
-        return Map2(self, other, lambda input1, input2: input1 / input2, 'div(/)')
+        return MapN('div(/)', lambda input1, input2: input1 / input2, self, other)
 
     def __rtruediv__(self, other):
         if not isinstance(other, FlowBase):
             other = Constant(other)
             self.get_engine().add_source(other)
 
-        return Map2(other, self, lambda input1, input2: input1 / input2, 'div(/)')
-
-    def __lshift__(self, other):
-        self.debug(other)
-        self._output = other
+        return MapN('div(/)', lambda input1, input2: input1 / input2, other, self)
 
     def __lt__(self, other):
         return self.compare(other, lambda in1, in2: in1 < in2, 'lt(<)')
@@ -415,7 +411,7 @@ class FlowOps:
             other = Constant(other)
             self.get_engine().add_source(other)
 
-        return Map2(self, other, lambda input1, input2: fun(input1, input2), name)
+        return MapN(name, lambda input1, input2: fun(input1, input2), self, other)
 
     def filter(self, filter_fun, name='filter'):
         return Filter(self, filter_fun, name)
@@ -461,10 +457,7 @@ class FlowOps:
             self.info(msg.format(i))
             return i
 
-        return Map(self, l, 'probe')
-
-    def map(self, map_fun):
-        return MapWithTime(self, map_fun)
+        return MapN('probe', l, self)
 
     def fold(self, init, accum):
         return Fold(self, init, accum)
@@ -553,6 +546,10 @@ class FlowBase(FlowOps):
             raise RuntimeError("no result")
         else:
             return result
+
+    def __lshift__(self, other):
+        self.debug(other)
+        self._output = other
 
     def info(self, msg, *args):
         if self.logger.isEnabledFor(logging.INFO):
@@ -752,124 +749,6 @@ class FixedTimer(EagerSource):
 
     def get_all_events(self, start_time, end_time):
         return [(t, None) for t in self.timestamps if start_time <= end_time]
-
-
-class Map(Flow):
-    input = Input()
-
-    def __init__(self, input, map_fun, name='map'):
-        super().__init__(name)
-        self.map_fun = map_fun
-
-    @when(input)
-    def do_map(self):
-        self << self.map_fun(self.input())
-
-
-class MapWithTime(Flow):
-    input = Input()
-
-    def __init__(self, input, map_fun, name='map'):
-        super().__init__(name)
-        self.map_fun = map_fun
-
-    @when(input)
-    def do_map(self):
-        self << self.map_fun(self.input(), self.now())
-
-
-class Map2(Flow):
-    input1 = Input()
-    input2 = Input()
-
-    def __init__(self, input1, input2, map_fun, name='map2'):
-        super().__init__(name)
-        self.map_fun = map_fun
-
-    @when(input1, input2)
-    def do_map(self):
-        if self.input1 and self.input2:
-            self << self.map_fun(self.input1(), self.input2())
-
-    def __str__(self):
-        if self.name is not None:
-            return self.name
-        else:
-            return str(super())
-
-
-class Map3(Flow):
-    input1 = Input()
-    input2 = Input()
-    input3 = Input()
-
-    def __init__(self, input1, input2, input3, map_fun, name='map3'):
-        super().__init__(name)
-        self.map_fun = map_fun
-
-    @when(input1, input2, input3)
-    def do_map(self):
-        if self.input1 and self.input2 and self.input3:
-            self << self.map_fun(self.input1(), self.input2(), self.input3())
-
-    def __str__(self):
-        if self.name is not None:
-            return self.name
-        else:
-            return str(super())
-
-
-class Map6(Flow):
-    input1 = Input()
-    input2 = Input()
-    input3 = Input()
-    input4 = Input()
-    input5 = Input()
-    input6 = Input()
-
-    def __init__(self, input1, input2, input3, input4, input5, input6, map_fun, name='map3'):
-        super().__init__(name)
-        self.map_fun = map_fun
-
-    @when(input1, input2, input3, input4, input5, input6)
-    def do_map(self):
-        if self.input1 and self.input2 and self.input3:
-            self << self.map_fun(self.input1(), self.input2(), self.input3(), self.input4(), self.input5(),
-                                 self.input6())
-
-    def __str__(self):
-        if self.name is not None:
-            return self.name
-        else:
-            return str(super())
-
-
-class Map9(Flow):
-    input1 = Input()
-    input2 = Input()
-    input3 = Input()
-    input4 = Input()
-    input5 = Input()
-    input6 = Input()
-    input7 = Input()
-    input8 = Input()
-    input9 = Input()
-
-    def __init__(self, input1, input2, input3, input4, input5, input6, input7, input8, input9, map_fun, name='map3'):
-        super().__init__(name)
-        self.map_fun = map_fun
-
-    @when(input1, input2, input3, input4, input5, input6, input7, input8, input9)
-    def do_map(self):
-        if self.input1 and self.input2 and self.input3:
-            self << self.map_fun(self.input1(), self.input2(), self.input3(), self.input4(), self.input5(),
-                                 self.input6(), self.input7(), self.input8(), self.input9())
-
-    def __str__(self):
-        if self.name is not None:
-            return self.name
-        else:
-            return str(super())
 
 
 class Flatten2(Flow):
