@@ -208,30 +208,3 @@ class TestFlow(unittest.TestCase):
 
         engine.start(datetime(2016, 1, 1, 1, 1, 1), datetime(2016, 1, 1, 1, 1, 10))
         self.assertEqual(t(), [(datetime(2016, 1, 1, 1, 1, 6), 1), (datetime(2016, 1, 1, 1, 1, 10), 1)])
-
-    def testLifting(self):
-        t1 = datetime(2016, 8, 1, 10, 11, 12)
-        t2 = datetime(2016, 8, 1, 10, 11, 13)
-
-        engine = Engine(keep_history=True)
-
-        @lift()
-        def zscore(p):
-            return (p - p.mean()) / p.std()
-
-        data = DataSource(engine, [
-            (t1, pd.Series([1, 2, 3, 4])),
-            (t2, pd.Series([2, 3, 4, 6]))
-            ]
-        )
-
-        z = zscore(data)
-
-        # engine.show_graph('test')
-        engine.start(t1, t2)
-
-        print(z())
-
-
-
-

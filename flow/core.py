@@ -197,7 +197,7 @@ class Input:
     def __set__(self, instance, value):
         # print('input get instance: {} value: {}'.format(instance, value))
 
-        if isinstance(value, Flow):
+        if isinstance(value, FlowBase):
             value = value._output
 
         node = NodeRegistry.get_input(instance, id(self))
@@ -277,13 +277,13 @@ def init_wrapper(orig_init, input_names, positions):
 
         for name, value in kwargs.items():
             if name in input_names:
-                if not (isinstance(value, OutputNode) or isinstance(value, Flow)):
+                if not (isinstance(value, OutputNode) or isinstance(value, FlowBase)):
                     raise TypeError('{} is not type output'.format(value))
                 setattr(instance, name, value)
 
         for index, arg in enumerate(args):
             if index in positions:
-                if not (isinstance(arg, OutputNode) or isinstance(arg, Flow)):
+                if not (isinstance(arg, OutputNode) or isinstance(arg, FlowBase)):
                     raise TypeError('{} with type {} is not of type Output'.format(arg, type(arg)))
                 setattr(instance, positions[index], arg)
 
@@ -315,145 +315,57 @@ class MetaFlow(type):
         return super().__new__(mcs, cls_name, bases, cls_dict)
 
 
-class Flow(metaclass=MetaFlow):
-    _output = Output()
-
-    def __init__(self, name=None):
-        self.inputs = []
-        self.outputs = []
-        self.engine = None
-        self.name = name
-        self.logger = logging.getLogger(name) if name else logging.getLogger('flow')
-
-    def get_name(self):
-        return self.name
-
-    def add_input(self, input):
-        if input not in self.inputs:
-            self.inputs.append(input)
-
-    def add_output(self, output):
-        if output not in self.outputs:
-            self.outputs.append(output)
-
-    def get_inputs(self):
-        return self.inputs
-
-    def get_outputs(self):
-        return self.outputs
-
-    def get_class_name(self):
-        return self.__module__ + '.' + self.__class__.__qualname__
-
-    def get_children(self, skip_feedback=False):
-        children = set()
-
-        for output in self.outputs:
-            for child in output.get_children():
-                owner = child.get_owner()
-                if not skip_feedback or not isinstance(owner, Feedback):
-                    children.add(child.get_owner())
-
-        return list(children)
-
-    def get_parents(self):
-        parents = set()
-        for input in self.inputs:
-            owner = input.get_parent().get_owner()
-            parents.add(owner)
-
-        return list(parents)
-
-    def evaluate(self):
-        ids = [input.get_id() for input in self.get_inputs()]
-
-        active_ids = []
-        for id in ids:
-            input_node = NodeRegistry.get_input(self, id)
-            if input_node is not None and input_node.is_active():
-                active_ids.append(id)
-
-        if len(active_ids):
-            code_list = WhenBlockRegistry.get_code_list(self.get_class_name(), active_ids)
-
-            for code in code_list:
-                code(self)
-
-    def get_engine(self):
-        if not self.engine:
-            for parent in self.get_parents():
-                self.engine = parent.get_engine()
-
-        return self.engine
-
-    def now(self):
-        return self.get_engine().now()
-
-    def get_output_value(self, from_outputs=None):
-        values = {}
-
-        for output in self.outputs:
-            if not from_outputs or output in from_outputs:
-                values[output] = output.get_all_value()
-
-        return values
-
-    def __call__(self):
-        result = self.get_output_value().get(self._output, None)
-        if result is None:
-            raise RuntimeError("no result")
-        else:
-            return result
-
+class FlowOps:
     def __getattr__(self, item):
+        # TODO: better check
         if self.__class__ != Flow:
             self.warn('created map for {}:{}', self, item)
             return Map(self, lambda value: getattr(value, item), item)
 
     def __mul__(self, other):
-        if not isinstance(other, Flow):
+        if not isinstance(other, FlowBase):
             other = Constant(other)
             self.get_engine().add_source(other)
 
         return Map2(self, other, lambda input1, input2: input1 * input2, 'mul(*)')
 
     def __rmul__(self, other):
-        if not isinstance(other, Flow):
+        if not isinstance(other, FlowBase):
             other = Constant(other)
             self.get_engine().add_source(other)
 
         return Map2(other, self, lambda input1, input2: input1 * input2, 'mul(*)')
 
     def __sub__(self, other):
-        if not isinstance(other, Flow):
+        if not isinstance(other, FlowBase):
             other = Constant(other)
             self.get_engine().add_source(other)
 
         return Map2(self, other, lambda input1, input2: input1 - input2, 'sub(-)')
 
     def __rsub__(self, other):
-        if not isinstance(other, Flow):
+        if not isinstance(other, FlowBase):
             other = Constant(other)
             self.get_engine().add_source(other)
 
         return Map2(other, self, lambda input1, input2: input1 - input2, 'sub(-)')
 
     def __add__(self, other):
-        if not isinstance(other, Flow):
+        if not isinstance(other, FlowBase):
             other = Constant(other)
             self.get_engine().add_source(other)
 
         return Map2(self, other, lambda input1, input2: input1 + input2, 'add(+)')
 
     def __radd__(self, other):
-        if not isinstance(other, Flow):
+        if not isinstance(other, FlowBase):
             other = Constant(other)
             self.get_engine().add_source(other)
 
         return Map2(other, self, lambda input1, input2: input1 + input2, 'add(+)')
 
     def __pow__(self, other):
-        if not isinstance(other, Flow):
+        if not isinstance(other, FlowBase):
             other = Constant(other)
             self.get_engine().add_source(other)
 
@@ -469,14 +381,14 @@ class Flow(metaclass=MetaFlow):
         return Map(self, lambda input: +input, 'pos(+)')
 
     def __truediv__(self, other):
-        if not isinstance(other, Flow):
+        if not isinstance(other, FlowBase):
             other = Constant(other)
             self.get_engine().add_source(other)
 
         return Map2(self, other, lambda input1, input2: input1 / input2, 'div(/)')
 
     def __rtruediv__(self, other):
-        if not isinstance(other, Flow):
+        if not isinstance(other, FlowBase):
             other = Constant(other)
             self.get_engine().add_source(other)
 
@@ -499,7 +411,7 @@ class Flow(metaclass=MetaFlow):
         return self.compare(other, lambda in1, in2: in1 >= in2, 'ge(>=)')
 
     def compare(self, other, fun, name='compare'):
-        if not isinstance(other, Flow):
+        if not isinstance(other, FlowBase):
             other = Constant(other)
             self.get_engine().add_source(other)
 
@@ -551,6 +463,97 @@ class Flow(metaclass=MetaFlow):
 
         return Map(self, l, 'probe')
 
+    def map(self, map_fun):
+        return MapWithTime(self, map_fun)
+
+    def fold(self, init, accum):
+        return Fold(self, init, accum)
+
+
+class FlowBase(FlowOps):
+    _output = Output()
+
+    def __init__(self, name=None):
+        self.inputs = []
+        self.outputs = []
+        self.engine = None
+        self.name = name
+        self.logger = logging.getLogger(name) if name else logging.getLogger('flow')
+
+    def get_name(self):
+        return self.name
+
+    def add_input(self, input):
+        if input not in self.inputs:
+            self.inputs.append(input)
+
+    def add_output(self, output):
+        if output not in self.outputs:
+            self.outputs.append(output)
+
+    def get_inputs(self):
+        return self.inputs
+
+    def get_outputs(self):
+        return self.outputs
+
+    def get_class_name(self):
+        return self.__module__ + '.' + self.__class__.__qualname__
+
+    def get_children(self, skip_feedback=False):
+        children = set()
+
+        for output in self.outputs:
+            for child in output.get_children():
+                owner = child.get_owner()
+                if not skip_feedback or not isinstance(owner, Feedback):
+                    children.add(child.get_owner())
+
+        return list(children)
+
+    def get_parents(self):
+        parents = set()
+        for input in self.inputs:
+            owner = input.get_parent().get_owner()
+            parents.add(owner)
+
+        return list(parents)
+
+    def evaluate(self):
+        active_ids = [input_node.get_id() for input_node in self.get_inputs() if input_node.is_active()]
+
+        if len(active_ids):
+            code_list = WhenBlockRegistry.get_code_list(self.get_class_name(), active_ids)
+
+            for code in code_list:
+                code(self)
+
+    def get_engine(self):
+        if not self.engine:
+            for parent in self.get_parents():
+                self.engine = parent.get_engine()
+
+        return self.engine
+
+    def now(self):
+        return self.get_engine().now()
+
+    def get_output_value(self, from_outputs=None):
+        values = {}
+
+        for output in self.outputs:
+            if not from_outputs or output in from_outputs:
+                values[output] = output.get_all_value()
+
+        return values
+
+    def __call__(self):
+        result = self.get_output_value().get(self._output, None)
+        if result is None:
+            raise RuntimeError("no result")
+        else:
+            return result
+
     def info(self, msg, *args):
         if self.logger.isEnabledFor(logging.INFO):
             self.log(logging.INFO, msg, *args)
@@ -578,11 +581,9 @@ class Flow(metaclass=MetaFlow):
         physical_time = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')
         self.logger.log(level, '[{}]-[{}] {}'.format(physical_time, logical_time, log_msg))
 
-    def map(self, map_fun):
-        return MapWithTime(self, map_fun)
 
-    def fold(self, init, accum):
-        return Fold(self, init, accum)
+class Flow(FlowBase, metaclass=MetaFlow):
+    pass
 
 
 class Source(Flow):
@@ -721,7 +722,6 @@ class LazySource(Source):
 
     def get_next_event(self, start_time, end_time):
         pass
-
 
 
 class IntervalTimer(LazySource):
@@ -1121,77 +1121,51 @@ def flatten(inputs):
         return inputs
 
 
+class MapN(FlowBase):
+    def __init__(self, name, fun, *inputs, timed=False, passive=None):
+        super().__init__(name)
+        self.fun = fun
+        self.timed = timed
+
+        self.active_params = []
+        self.passive_params = []
+
+        params = signature(fun)
+        timed_adj = 1 if timed else 0
+        param_pos = {i - timed_adj: name for i, name in enumerate(params.parameters.keys())}
+        for pos, input in enumerate(inputs):
+            i = Input()
+            if not isinstance(input, FlowBase):
+                input = Constant(input, self.get_engine())
+            i.__set__(self, input)
+            param_name = param_pos[pos]
+            if passive is None or param_name not in  passive:
+                self.active_params.append(i)
+            else:
+                self.passive_params.append(i)
+
+        when(*self.active_params)(MapN.handle)
+
+    def handle(self):
+        params = [NodeRegistry.get_input(self, id(param)) for param in self.active_params + self.passive_params]
+        has_value = [param.has_value() for param in params]
+        if all(has_value):
+            params = [param() for param in params]
+            if self.timed:
+                params = [self.now()] + params
+            v = self.fun(*params)
+            if v is not None:
+                self << v
+
+
 class lift:
-    def __init__(self, name=None):
+    def __init__(self, name=None, timed=False, passive=None):
         self.name = name
+        self.timed = timed
+        self.passive = passive
 
     def __call__(self, fun):
-        def map(input):
-            return Map(input, fun, fun.__name__ if self.name is None else self.name)
-
-        def map2(input1, input2):
-            if not isinstance(input2, Flow):
-                input2 = Constant(input2)
-                input1.get_engine().add_source(input2)
-            return Map2(input1, input2, fun, fun.__name__ if self.name is None else self.name)
-
-        def map3(input1, input2, input3):
-            if not isinstance(input2, Flow):
-                input2 = Constant(input2)
-                input1.get_engine().add_source(input2)
-            if not isinstance(input3, Flow):
-                input3 = Constant(input3)
-                input1.get_engine().add_source(input3)
-            return Map3(input1, input2, input3, fun, fun.__name__ if self.name is None else self.name)
-
-        def map6(input1, input2, input3, input4, input5, input6):
-            if not isinstance(input2, Flow):
-                input2 = Constant(input2)
-                input1.get_engine().add_source(input2)
-            if not isinstance(input3, Flow):
-                input3 = Constant(input3)
-                input1.get_engine().add_source(input3)
-            if not isinstance(input4, Flow):
-                input4 = Constant(input4)
-                input1.get_engine().add_source(input4)
-            if not isinstance(input5, Flow):
-                input5 = Constant(input5)
-                input1.get_engine().add_source(input5)
-            if not isinstance(input6, Flow):
-                input6 = Constant(input6)
-                input1.get_engine().add_source(input6)
-
-            return Map6(input1, input2, input3, input4, input5, input6, fun,
-                        fun.__name__ if self.name is None else self.name)
-
-        def map9(input1, input2, input3, input4, input5, input6, input7, input8, input9):
-            if not isinstance(input2, Flow):
-                input2 = Constant(input2)
-                input1.get_engine().add_source(input2)
-            if not isinstance(input3, Flow):
-                input3 = Constant(input3)
-                input1.get_engine().add_source(input3)
-            if not isinstance(input4, Flow):
-                input4 = Constant(input4)
-                input1.get_engine().add_source(input4)
-            if not isinstance(input5, Flow):
-                input5 = Constant(input5)
-                input1.get_engine().add_source(input5)
-            if not isinstance(input6, Flow):
-                input6 = Constant(input6)
-                input1.get_engine().add_source(input6)
-            if not isinstance(input7, Flow):
-                input7 = Constant(input7)
-                input1.get_engine().add_source(input7)
-            if not isinstance(input8, Flow):
-                input8 = Constant(input8)
-                input1.get_engine().add_source(input8)
-            if not isinstance(input9, Flow):
-                input9 = Constant(input9)
-                input1.get_engine().add_source(input9)
-            return Map9(input1, input2, input3, input4, input5, input6, input7, input8, input9,
-                        fun, fun.__name__ if self.name is None else self.name)
-
-        mapped = {1: map, 2: map2, 3: map3, 6: map6, 9: map9}
-        sig = signature(fun)
-        return mapped[len(sig.parameters.keys())]
+        def map_n(*inputs):
+            passive = self.passive if isinstance(self.passive, list) else [self.passive]
+            return MapN(self.name, fun, *inputs, timed=self.timed, passive=passive)
+        return map_n
