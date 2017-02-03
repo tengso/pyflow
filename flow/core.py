@@ -1,10 +1,10 @@
+from collections import defaultdict
 from typing import Sequence, Tuple, Any
 
 import datetime
 from datetime import timedelta
 import logging
 import heapq
-from collections import OrderedDict
 import graphviz as gv
 from inspect import signature
 
@@ -137,36 +137,28 @@ class InputNode(Node):
 
 
 class WhenBlockRegistry:
-    registry = {}
+    registry = defaultdict(list)
     code_cache = {}
 
     @staticmethod
-    def add(class_name, input_id, code):
-        if class_name not in WhenBlockRegistry.registry:
-            WhenBlockRegistry.registry[class_name] = OrderedDict()
-
-        if code not in WhenBlockRegistry.registry[class_name]:
-            WhenBlockRegistry.registry[class_name][code] = []
-
-        WhenBlockRegistry.registry[class_name][code].append(input_id)
+    def add(input_id, code):
+        WhenBlockRegistry.registry[code].append(input_id)
 
     @staticmethod
-    def get_code_list(class_name, input_ids):
+    def get_code_list(input_ids):
         input_ids_key = str(input_ids)
 
-        code_list = WhenBlockRegistry.code_cache.get((class_name, input_ids_key))
+        code_list = WhenBlockRegistry.code_cache.get(input_ids_key)
         if code_list:
             return code_list
 
         code_list = []
-        code_to_ids = WhenBlockRegistry.registry.get(class_name, {})
-
-        for code, ids in code_to_ids.items():
+        for code, ids in WhenBlockRegistry.registry.items():
             for input_id in input_ids:
                 if input_id in ids and code not in code_list:
                     code_list.append(code)
 
-        WhenBlockRegistry.code_cache[(class_name, input_ids_key)] = code_list
+        WhenBlockRegistry.code_cache[input_ids_key] = code_list
         return code_list
 
 
@@ -175,11 +167,8 @@ class when:
         self.inputs = inputs
 
     def __call__(self, f):
-        tokens = f.__qualname__.split('.')
-        class_name = f.__module__ + '.' + '.'.join(tokens[0:-1])
-
         for input in self.inputs:
-            WhenBlockRegistry.add(class_name, id(input), f)
+            WhenBlockRegistry.add(id(input), f)
 
 
 class Input:
@@ -490,9 +479,6 @@ class FlowBase(FlowOps):
     def get_outputs(self):
         return self.outputs
 
-    def get_class_name(self):
-        return self.__module__ + '.' + self.__class__.__qualname__
-
     def get_children(self, skip_feedback=False):
         children = set()
 
@@ -516,7 +502,7 @@ class FlowBase(FlowOps):
         active_ids = [input_node.get_id() for input_node in self.get_inputs() if input_node.is_active()]
 
         if len(active_ids):
-            code_list = WhenBlockRegistry.get_code_list(self.get_class_name(), active_ids)
+            code_list = WhenBlockRegistry.get_code_list(active_ids)
 
             for code in code_list:
                 code(self)
@@ -956,7 +942,7 @@ class Engine:
             graph.node(str(id(node)),
                        color='red' if isinstance(node, Feedback) else 'blue' if isinstance(node, Source)
                        else 'black',
-                       label=name if name else node.get_class_name(),
+                       label=name if name else node.__class__,
                        shape='diamond' if isinstance(node, Feedback) else 'box' if isinstance(node, Source)
                        else 'oval'
                        )

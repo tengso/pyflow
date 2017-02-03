@@ -207,3 +207,39 @@ class TestFlow(unittest.TestCase):
 
         engine.start(datetime(2016, 1, 1, 1, 1, 1), datetime(2016, 1, 1, 1, 1, 10))
         self.assertEqual(t(), [(datetime(2016, 1, 1, 1, 1, 6), 1), (datetime(2016, 1, 1, 1, 1, 10), 1)])
+
+    def testInheritance(self):
+        engine = Engine(keep_history=True)
+
+        class T(Flow):
+            input = Input()
+
+            def __init__(self, input):
+                super().__init__()
+
+            @when(input)
+            def handle(self):
+                self << self.compute(self.input())
+
+            def compute(self, i):
+                return i + 1
+
+        class T2(T):
+            def compute(self, i):
+                return i + 3
+
+        start = Constant(1, engine)
+
+        t1 = T(start)
+        t2 = T2(t1)
+
+        ts = datetime(2016, 1, 1, 1, 1, 1)
+        engine.start(ts, ts)
+
+        t, v = t1()[0]
+        self.assertEqual(t, ts)
+        self.assertEqual(v, 2)
+
+        t, v = t2()[0]
+        self.assertEqual(t, ts)
+        self.assertEqual(v, 5)
