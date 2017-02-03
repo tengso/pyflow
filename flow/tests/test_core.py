@@ -2,7 +2,7 @@ import unittest
 
 from datetime import datetime
 from datetime import timedelta
-from flow.core import Engine, DataSource, Flow, when, Input, Feedback, Constant, Timer, Output, lift
+from flow.core import Engine, DataSource, Flow, when, Input, Feedback, Constant, Timer, Output, lift, DynamicFlow
 
 
 class TestFlow(unittest.TestCase):
@@ -243,3 +243,24 @@ class TestFlow(unittest.TestCase):
         t, v = t2()[0]
         self.assertEqual(t, ts)
         self.assertEqual(v, 5)
+
+    def testDynamic(self):
+        engine = Engine(keep_history=True)
+
+        class T(DynamicFlow):
+            def when(self, input1, input2):
+                if input1.is_active() and input2.is_active():
+                    self << input1() + input2()
+
+        input1 = Constant(1, engine)
+        input2 = Constant(2, engine)
+
+        t = T(input1, input2)
+
+        ts = datetime(2016, 1, 1, 1, 1, 1)
+        engine.start(ts, ts)
+
+        t, v = t()[0]
+        self.assertEqual(t, ts)
+        self.assertEqual(v, 3)
+
