@@ -986,6 +986,29 @@ def flatten(inputs):
         return inputs
 
 
+class DynamicFlow(FlowBase):
+    def __init__(self, *inputs):
+        super().__init__('dyn_flow')
+        self.params = []
+
+        for input in inputs:
+            i = Input()
+            if not isinstance(input, FlowBase):
+                input = Constant(input, self.get_engine())
+            i.__set__(self, input)
+            self.params.append(i)
+
+        when(*self.params)(DynamicFlow.handle)
+
+    def handle(self):
+        params = [NodeRegistry.get_input(self, id(param)) for param in self.params]
+        self.when(*params)
+
+    @abstractmethod
+    def when(self, *params):
+        pass
+
+
 class MapN(FlowBase):
     def __init__(self, name, fun, *inputs, timed=False, passive=None):
         super().__init__(name)
