@@ -1,4 +1,4 @@
-from collections import defaultdict
+from collections import OrderedDict
 from typing import Sequence, Tuple, Any
 
 import datetime
@@ -137,11 +137,13 @@ class InputNode(Node):
 
 
 class WhenBlockRegistry:
-    registry = defaultdict(list)
+    registry = OrderedDict()
     code_cache = {}
 
     @staticmethod
     def add(input_id, code):
+        if code not in WhenBlockRegistry.registry:
+            WhenBlockRegistry.registry[code] = []
         WhenBlockRegistry.registry[code].append(input_id)
 
     @staticmethod
@@ -928,6 +930,7 @@ class Engine:
             if self.current_time < start_time or self.current_time > end_time:
                 break
 
+            self.log(logging.INFO, 'evaluating')
             for source in next_sources:
                 source.evaluate()
 
