@@ -264,3 +264,33 @@ class TestFlow(unittest.TestCase):
         self.assertEqual(t, ts)
         self.assertEqual(v, 3)
 
+    def testWhenOrder(self):
+        engine = Engine(keep_history=True)
+
+        class Test(Flow):
+            in1 = Input()
+            in2 = Input()
+
+            def __init__(self, in1, in2):
+                super().__init__()
+                self.cache = None
+
+            @when(in2)
+            def handle(self):
+                self.cache = 1
+
+            @when(in2, in1)
+            def when(self):
+                self << self.cache
+
+        input1 = Constant(1, engine)
+        input2 = Constant(2, engine)
+
+        t = Test(input1, input2)
+
+        ts = datetime(2016, 1, 1, 1, 1, 1)
+        engine.start(ts, ts)
+
+        t, v = t()[0]
+        self.assertEqual(v, 1)
+
