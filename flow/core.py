@@ -598,8 +598,8 @@ class Empty(Source):
 
 
 class Constant(Source):
-    def __init__(self, value, engine=None):
-        super().__init__('Constant({})'.format(value))
+    def __init__(self, value, engine=None, name=None):
+        super().__init__('{}({})'.format(name if name else 'constant', value))
         self.value = value
         self.consumed = False
         if engine is not None:
@@ -614,6 +614,9 @@ class Constant(Source):
 
     def evaluate(self):
         self << self.value
+
+    def __str__(self):
+        return str(self.value)
 
 
 class Feedback(Source):
