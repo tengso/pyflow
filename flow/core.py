@@ -506,6 +506,8 @@ class FlowBase(FlowOps):
         if len(active_ids):
             code_list = WhenBlockRegistry.get_code_list(active_ids)
 
+            self.debug('evaluating')
+
             for code in code_list:
                 code(self)
 
@@ -536,7 +538,7 @@ class FlowBase(FlowOps):
             return result
 
     def __lshift__(self, other):
-        self.debug(other)
+        self.debug('result: {}'.format(other))
         self._output = other
 
     def info(self, msg, *args):
@@ -562,7 +564,7 @@ class FlowBase(FlowOps):
     def log(self, level, msg, *args):
         log_msg = msg.format(*args) if len(args) else msg
         now = self.now()
-        logical_time = now.strftime('%Y-%m-%d %M:%H:%S.%f') if now is not None else ''
+        logical_time = now.strftime('%Y-%m-%d %H:%M:%S.%f') if now is not None else ''
         physical_time = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')
         self.logger.log(level, '[{}]-[{}] {}'.format(physical_time, logical_time, log_msg))
 
@@ -933,7 +935,7 @@ class Engine:
             if self.current_time < start_time or self.current_time > end_time:
                 break
 
-            self.log(logging.INFO, 'evaluating')
+            self.log(logging.INFO, 'starting cycle')
             for source in next_sources:
                 source.evaluate()
 
