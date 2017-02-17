@@ -1,4 +1,8 @@
+import time
+from queue import Queue, Empty as QueueEmpty
+
 from collections import OrderedDict
+from threading import Thread
 from typing import Sequence, Tuple, Any
 
 import datetime
@@ -741,7 +745,7 @@ class FixedTimer(EagerSource):
         engine.add_source(self)
 
     def get_all_events(self, start_time, end_time):
-        return [(t, None) for t in self.timestamps if start_time <= end_time]
+        return [(t, None) for t in self.timestamps if start_time <= t <= end_time]
 
 
 class Flatten2(Flow):
@@ -812,7 +816,7 @@ class Fold(Flow):
         self << self.accum
 
 
-class Engine:
+class EngineBase:
     def __init__(self, keep_history=False):
         self.sources = []
         self.current_time = None
@@ -898,6 +902,48 @@ class Engine:
         else:
             self._start(start_time, end_time)
 
+    def show_graph(self, file_name='graph', show_cycle=False, show_edge_label=True, same_rank=None):
+        if same_rank:
+            sr = ' '.join('{}'.format(id(sr)) for sr in same_rank)
+            body = ['{' + 'rank=same; {}'.format(sr) + '}']
+        else:
+            body = None
+
+        graph = gv.Digraph(engine='dot', body=body)
+
+        def add_node(node):
+            name = node.get_name()
+            graph.node(str(id(node)),
+                       color='red' if isinstance(node, Feedback) else 'blue' if isinstance(node, Source)
+                       else 'black',
+                       label=name if name else node.__class__,
+                       shape='diamond' if isinstance(node, Feedback) else 'box' if isinstance(node, Source)
+                       else 'oval'
+                       )
+
+        def add_edge(parent, child, input_node):
+            if not show_cycle and isinstance(parent, Feedback):
+                return
+
+            name = ''
+            if show_edge_label:
+                for key in dir(child):
+                    try:
+                        value = getattr(child, key)
+                        if isinstance(value, InputNode) and value.get_id() == input_node.get_id():
+                            name = key
+                            break
+                    except Exception as e:
+                        pass
+
+            graph.edge(str(id(parent)), str(id(child)), label=name)
+
+        self.visit(add_node, add_edge)
+
+        graph.render(filename=file_name, view=True)
+
+
+class Engine(EngineBase):
     def _start(self, start_time, end_time):
         sorted_list = [n for n in self.sort() if not isinstance(n, Source)]
 
@@ -942,39 +988,89 @@ class Engine:
             for n in sorted_list:
                 n.evaluate()
 
-    def show_graph(self, file_name='graph', show_cycle=False, show_edge_label=True):
-        graph = gv.Digraph(engine='dot')
 
-        def add_node(node):
-            name = node.get_name()
-            graph.node(str(id(node)),
-                       color='red' if isinstance(node, Feedback) else 'blue' if isinstance(node, Source)
-                       else 'black',
-                       label=name if name else node.__class__,
-                       shape='diamond' if isinstance(node, Feedback) else 'box' if isinstance(node, Source)
-                       else 'oval'
-                       )
+class RealTimeEngine(EngineBase):
+    def __init__(self, keep_history=False):
+        super().__init__(keep_history)
+        self.event_queue = Queue()
 
-        def add_edge(parent, child, input_node):
-            if not show_cycle and isinstance(parent, Feedback):
-                return
+    def get_queue(self):
+        return self.event_queue
 
-            name = ''
-            if show_edge_label:
-                for key in dir(child):
-                    try:
-                        value = getattr(child, key)
-                        if isinstance(value, InputNode) and value.get_id() == input_node.get_id():
-                            name = key
-                            break
-                    except Exception as e:
-                        pass
+    def _start(self, start_time, end_time):
+        for source in self.sources:
+            source.start(start_time, end_time)
 
-            graph.edge(str(id(parent)), str(id(child)), label=name)
+        sorted_list = [n for n in self.sort() if not isinstance(n, Source)]
 
-        self.visit(add_node, add_edge)
+        wait = start_time - datetime.datetime.now()
+        if wait.total_seconds() > 0:
+            time.sleep(wait.total_seconds())
 
-        graph.render(filename=file_name, view=True)
+        while True:
+            try:
+                now = datetime.datetime.now()
+                max_wait = (end_time - now).total_seconds()
+
+                if max_wait > 0:
+                    t, source = self.get_queue().get(block=True, timeout=max_wait)
+                    if t > start_time:
+                        if self.current_time and t <= self.current_time:
+                            t += timedelta(microseconds=self.interval)
+                        self.current_time = t
+
+                        source.evaluate()
+
+                        for n in sorted_list:
+                            n.evaluate()
+                else:
+                    break
+            except QueueEmpty as e:
+                break
+
+
+class RealTimeSource(Source):
+    def __init__(self, name, engine):
+        super().__init__(name)
+        self.engine = engine
+        self.engine.add_source(self)
+
+    def start(self, start_time, end_time):
+        pass
+
+    def close(self):
+        pass
+
+
+class RealTimeDataSource(RealTimeSource):
+    def __init__(self, name, engine, data):
+        super().__init__(name, engine)
+        self.data = data
+        self.index = 0
+        self.start_time = None
+        self.end_time = None
+
+    def start(self, start_time, end_time):
+        self.start_time = start_time
+        self.end_time = end_time
+
+        def schedule():
+            for t, v in self.data:
+                if self.start_time <= t <= self.end_time:
+                    wait = t - datetime.datetime.now()
+                    if wait.total_seconds() > 0:
+                        time.sleep(wait.total_seconds())
+                    self.get_engine().get_queue().put((t, self))
+        t = Thread(target=schedule)
+        t.start()
+
+    def evaluate(self):
+        self._output = self.data[self.index][1]
+        self.index += 1
+
+    # FIXME:
+    def close(self):
+        pass
 
 
 def flatten(inputs):
