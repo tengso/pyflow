@@ -36,6 +36,53 @@ class NodeRegistry(object):
         NodeRegistry.output_registry[(owner, node_id)] = node
 
 
+class Graph(object):
+    def __init__(self, name):
+        self.name = name
+        self.children = []
+
+    def add_child(self, child):
+        self.children.append(child)
+
+    def get_children(self):
+        return self.children
+
+    def __str__(self):
+        return self.name
+
+    def __repr__(self):
+        return str(self)
+
+
+class GraphRoot(Graph):
+    def __init__(self):
+        super().__init__('root')
+
+
+class GraphStack(object):
+    stack = list()
+
+    @staticmethod
+    def push(graph):
+        GraphStack.stack.insert(0, graph)
+
+    @staticmethod
+    def pop():
+        if len(GraphStack.stack):
+            n = GraphStack.stack[0]
+            del GraphStack.stack[0]
+            return n
+        else:
+            return None
+
+    @staticmethod
+    def peek():
+        if len(GraphStack.stack):
+            return GraphStack.stack[0]
+        else:
+            return None
+
+
 class Node(object):
     def __init__(self, owner, node_id):
         self.owner = owner
@@ -467,6 +514,7 @@ class FlowBase(FlowOps):
         self.engine = None
         self.name = name
         self.logger = logging.getLogger(name) if name else logging.getLogger('flow')
+        GraphStack.peek().add_child(self)
 
     def get_name(self):
         return self.name
@@ -571,6 +619,12 @@ class FlowBase(FlowOps):
         logical_time = now.strftime('%Y-%m-%d %H:%M:%S.%f') if now is not None else ''
         physical_time = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')
         self.logger.log(level, '[{}]-[{}] {}'.format(physical_time, logical_time, log_msg))
+
+    def __str__(self):
+        return self.name
+
+    def __repr__(self):
+        return str(self)
 
 
 class Flow(FlowBase, metaclass=MetaFlow):
@@ -816,8 +870,22 @@ class Fold(Flow):
         self << self.accum
 
 
+class EngineListener:
+    def engine_started(self, logical_time, physical_time):
+        pass
+
+    def engine_finished(self, logical_time, physical_time):
+        pass
+
+    def node_finished(self, node_id, logical_time, physical_time):
+        pass
+
+    def node_started(self, node_id, logical_time, physical_time):
+        pass
+
+
 class EngineBase:
-    def __init__(self, keep_history=False):
+    def __init__(self, keep_history=False, listener: EngineListener=None):
         self.sources = []
         self.current_time = None
         self.interval = 1
@@ -825,6 +893,10 @@ class EngineBase:
         self.logger = logging.getLogger('flow')
 
         self.keep_history = keep_history
+        self.listener = listener
+
+        self.graph_root = GraphRoot()
+        GraphStack.push(self.graph_root)
 
     def debug(self, msg, *args, **kwargs):
         self.log(logging.DEBUG, msg, args, kwargs)
@@ -888,6 +960,9 @@ class EngineBase:
         return result
 
     def start(self, start_time, end_time, profile=False):
+        if self.listener:
+            self.listener.engine_started(start_time, datetime.datetime.now())
+
         if profile:
             import cProfile, pstats, io
             pr = cProfile.Profile()
@@ -901,6 +976,9 @@ class EngineBase:
             print(s.getvalue())
         else:
             self._start(start_time, end_time)
+
+        if self.listener:
+            self.listener.engine_finished(start_time, datetime.datetime.now())
 
     def show_graph(self, file_name='graph', show_cycle=False, show_edge_label=True, same_rank=None):
         if same_rank:
@@ -942,6 +1020,16 @@ class EngineBase:
 
         graph.render(filename=file_name, view=True)
 
+    def traverse(self, visitor):
+
+        def traverse_graph(parent, visitor):
+            for child in parent.get_children():
+                visitor(child, parent)
+                if isinstance(child, Graph):
+                    traverse_graph(child, visitor)
+
+        return traverse_graph(self.graph_root, visitor)
+
 
 class Engine(EngineBase):
     def _start(self, start_time, end_time):
@@ -982,11 +1070,17 @@ class Engine(EngineBase):
                 break
 
             self.log(logging.INFO, 'starting cycle')
-            for source in next_sources:
-                source.evaluate()
 
-            for n in sorted_list:
+            for n in next_sources + sorted_list:
+                if self.listener:
+                    self.listener.node_started(
+                        id(n), self.now(), datetime.datetime.now())
+
                 n.evaluate()
+
+                if self.listener:
+                    self.listener.node_finished(
+                        id(n), self.now(), datetime.datetime.now())
 
 
 class RealTimeEngine(EngineBase):
@@ -1161,3 +1255,22 @@ class lift:
             passive = self.passive if isinstance(self.passive, list) else [self.passive]
             return MapN(self.name, fun, *inputs, timed=self.timed, passive=passive)
         return map_n
+
+
+class graph:
+    def __init__(self, name):
+        self.name = name
+
+    def __call__(self, fun):
+        def wrapper(*args, **kwargs):
+            parent = GraphStack.peek()
+            child = Graph(self.name)
+            parent.add_child(child)
+            GraphStack.push(child)
+
+            result = fun(*args, *kwargs)
+
+            GraphStack.pop()
+            return result
+
+        return wrapper

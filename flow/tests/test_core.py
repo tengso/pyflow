@@ -2,7 +2,8 @@ import unittest
 
 from datetime import datetime
 from datetime import timedelta
-from flow.core import Engine, DataSource, Flow, when, Input, Feedback, Constant, Timer, Output, lift, DynamicFlow
+from flow.core import Engine, DataSource, Flow, when, Input, Feedback, Constant, Timer, Output, lift, DynamicFlow, \
+    graph, Graph
 
 
 class TestFlow(unittest.TestCase):
@@ -294,3 +295,77 @@ class TestFlow(unittest.TestCase):
         t, v = t()[0]
         self.assertEqual(v, 1)
 
+    def testGrouping(self):
+        engine = Engine(keep_history=True)
+
+        class Test(Flow):
+            in1 = Input()
+            in2 = Input()
+
+            def __init__(self, in1, in2):
+                super().__init__('test')
+                self.cache = None
+
+            @when(in2)
+            def handle(self):
+                self.cache = 1
+
+            @when(in2, in1)
+            def when(self):
+                self << self.cache
+
+        @graph('group1')
+        def group1():
+            input1 = Constant(1, engine)
+            input2 = Constant(2, engine)
+
+            return Test(input1, input2)
+
+        @graph('group2')
+        def group2():
+            input1 = Constant(1, engine)
+            input2 = Constant(2, engine)
+
+            @graph('graph2.1')
+            def group22():
+                input1 = Constant(3, engine)
+                input2 = Constant(4, engine)
+
+                return Test(input1, input2)
+
+            return Test(input1, input2) + group22()
+
+        @graph('group3')
+        def group3(input1, input2):
+            return input1 + input2
+
+        ts = datetime(2016, 1, 1, 1, 1, 1)
+        g1 = group1()
+        g2 = group2()
+        g3 = group3(g1, g2)
+
+        graphs = list()
+
+        def print_it(o1, o2):
+            graphs.append((str(o1), str(o2)))
+
+        engine.traverse(print_it)
+
+        expected = [
+            ('group1', 'root'),
+            ('1', 'group1'),
+            ('2', 'group1'),
+            ('test', 'group1'),
+            ('group2', 'root'),
+            ('1', 'group2'),
+            ('2', 'group2'),
+            ('test', 'group2'),
+            ('graph2.1', 'group2'),
+            ('3', 'graph2.1'),
+            ('4', 'graph2.1'),
+            ('test', 'graph2.1'),
+            ('add(+)', 'group2'),
+            ('group3', 'root'),
+            ('add(+)', 'group3'),
+        ]
+        self.assertEqual(expected, graphs)
