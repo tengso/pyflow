@@ -769,6 +769,7 @@ class LazySource(Source):
         self.next = ()
 
     def get_next_event(self, start_time, end_time):
+        # return (time, value)
         pass
 
 
