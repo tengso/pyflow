@@ -817,7 +817,7 @@ class Flatten2(Flow):
             if isinstance(self.input1(), list):
                 result.extend(self.input1())
             else:
-                result.apend(self.input1())
+                result.append(self.input1())
 
             if self.input2.is_active():
                 if isinstance(self.input2(), list):
@@ -1246,16 +1246,21 @@ class MapN(FlowBase):
 
 
 class lift:
+    IS_OFF = False
+
     def __init__(self, name=None, timed=False, passive=None):
         self.name = name
         self.timed = timed
         self.passive = passive
 
     def __call__(self, fun):
-        def map_n(*inputs):
-            passive = self.passive if isinstance(self.passive, list) else [self.passive]
-            return MapN(self.name, fun, *inputs, timed=self.timed, passive=passive)
-        return map_n
+        if not lift.IS_OFF:
+            def map_n(*inputs):
+                passive = self.passive if isinstance(self.passive, list) else [self.passive]
+                return MapN(self.name, fun, *inputs, timed=self.timed, passive=passive)
+            return map_n
+        else:
+            return fun
 
 
 class graph:
