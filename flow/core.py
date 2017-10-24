@@ -504,6 +504,9 @@ class FlowOps:
     def fold(self, init, accum):
         return Fold(self, init, accum)
 
+    def map(self, map_fun, name='map'):
+        return MapN(name, map_fun, self, timed=True)
+
 
 class FlowBase(FlowOps):
     _output = Output()
@@ -769,6 +772,7 @@ class LazySource(Source):
         self.next = ()
 
     def get_next_event(self, start_time, end_time):
+        # return (time, value)
         pass
 
 
