@@ -516,8 +516,11 @@ class FlowBase(FlowOps):
         self.outputs = []
         self.engine = None
         self.name = name
-        self.logger = logging.getLogger(name) if name else logging.getLogger('flow')
         GraphStack.peek().add_child(self)
+
+    def get_logger(self):
+        # have to use lazy-initialization here to work with Spark
+        return logging.getLogger(self.name)
 
     def get_name(self):
         return self.name
@@ -571,6 +574,9 @@ class FlowBase(FlowOps):
             for parent in self.get_parents():
                 self.engine = parent.get_engine()
 
+        if not self.engine:
+            raise(RuntimeError('engine is not set'))
+
         return self.engine
 
     def now(self):
@@ -597,23 +603,23 @@ class FlowBase(FlowOps):
         self._output = other
 
     def info(self, msg, *args):
-        if self.logger.isEnabledFor(logging.INFO):
+        if self.get_logger().isEnabledFor(logging.INFO):
             self.log(logging.INFO, msg, *args)
 
     def debug(self, msg, *args):
-        if self.logger.isEnabledFor(logging.DEBUG):
+        if self.get_logger().isEnabledFor(logging.DEBUG):
             self.log(logging.DEBUG, msg, *args)
 
     def error(self, msg, *args):
-        if self.logger.isEnabledFor(logging.ERROR):
+        if self.get_logger().isEnabledFor(logging.ERROR):
             self.log(logging.ERROR, msg, *args)
 
     def critical(self, msg, *args):
-        if self.logger.isEnabledFor(logging.CRITICAL):
+        if self.get_logger().isEnabledFor(logging.CRITICAL):
             self.log(logging.CRITICAL, msg, *args)
 
     def warn(self, msg, *args):
-        if self.logger.isEnabledFor(logging.WARN):
+        if self.get_logger().isEnabledFor(logging.WARN):
             self.log(logging.WARN, msg, *args)
 
     def log(self, level, msg, *args):
@@ -621,7 +627,7 @@ class FlowBase(FlowOps):
         now = self.now()
         logical_time = now.strftime('%Y-%m-%d %H:%M:%S.%f') if now is not None else ''
         physical_time = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')
-        self.logger.log(level, '[{}]-[{}] {}'.format(physical_time, logical_time, log_msg))
+        self.get_logger().log(level, '[{}]-[{}] {}'.format(physical_time, logical_time, log_msg))
 
     def __str__(self):
         return self.name
@@ -894,24 +900,25 @@ class EngineBase:
         self.current_time = None
         self.interval = 1
 
-        self.logger = logging.getLogger('flow')
-
         self.keep_history = keep_history
         self.listener = listener
 
         self.graph_root = GraphRoot()
         GraphStack.push(self.graph_root)
 
+    def get_logger(self):
+        return logging.getLogger('flow')
+
     def debug(self, msg, *args, **kwargs):
         self.log(logging.DEBUG, msg, args, kwargs)
 
     def log(self, level, msg, *args):
-        if self.logger.isEnabledFor(level):
+        if self.get_logger().isEnabledFor(level):
             log_msg = msg.format(*args)
             now = self.now()
             logical_time = now.strftime('%Y-%m-%d %H:%M:%S.%f') if now is not None else ''
             physical_time = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')
-            self.logger.log(level, '[{}]-[{}] {}'.format(physical_time, logical_time, log_msg))
+            self.get_logger().log(level, '[{}]-[{}] {}'.format(physical_time, logical_time, log_msg))
 
     def get_interval(self):
         return self.interval
@@ -1073,7 +1080,7 @@ class Engine(EngineBase):
             if self.current_time < start_time or self.current_time > end_time:
                 break
 
-            self.log(logging.INFO, 'starting cycle')
+            self.log(logging.INFO, 'start cycle')
 
             for n in next_sources + sorted_list:
                 if self.listener:
