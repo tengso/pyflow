@@ -895,7 +895,7 @@ class EngineListener:
 
 
 class EngineBase:
-    def __init__(self, keep_history=False, listener: EngineListener=None):
+    def __init__(self, keep_history=False, listener: EngineListener=None, logger_name='flow', logger_level=logging.INFO):
         self.sources = []
         self.current_time = None
         self.interval = 1
@@ -903,11 +903,14 @@ class EngineBase:
         self.keep_history = keep_history
         self.listener = listener
 
+        self.logger_name = logger_name
+        self.logger_level = logger_level
+
         self.graph_root = GraphRoot()
         GraphStack.push(self.graph_root)
 
     def get_logger(self):
-        return logging.getLogger('flow')
+        return logging.getLogger(self.logger_name)
 
     def debug(self, msg, *args, **kwargs):
         self.log(logging.DEBUG, msg, args, kwargs)
@@ -1080,7 +1083,7 @@ class Engine(EngineBase):
             if self.current_time < start_time or self.current_time > end_time:
                 break
 
-            self.log(logging.INFO, 'start cycle')
+            self.log(self.logger_level, 'start cycle')
 
             for n in next_sources + sorted_list:
                 if self.listener:
