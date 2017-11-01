@@ -1005,7 +1005,7 @@ class EngineBase:
             graph.node(str(id(node)),
                        color='red' if isinstance(node, Feedback) else 'blue' if isinstance(node, Source)
                        else 'black',
-                       label=name if name else node.__class__,
+                       label=name if name else str(node.__class__),
                        shape='diamond' if isinstance(node, Feedback) else 'box' if isinstance(node, Source)
                        else 'oval'
                        )
