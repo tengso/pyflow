@@ -3,7 +3,7 @@ import unittest
 from datetime import datetime
 from datetime import timedelta
 from flow.core import Engine, DataSource, Flow, when, Input, Feedback, Constant, Timer, Output, lift, DynamicFlow, \
-    graph, Graph
+    graph, Graph, flatten
 
 
 class TestFlow(unittest.TestCase):
@@ -369,3 +369,73 @@ class TestFlow(unittest.TestCase):
             ('add(+)', 'group3'),
         ]
         self.assertEqual(expected, graphs)
+
+    def testFlatten1(self):
+        t1 = datetime(2016, 1, 1, 1, 1, 1)
+        t2 = datetime(2016, 1, 1, 1, 1, 2)
+        t4 = datetime(2016, 1, 1, 1, 1, 4)
+
+        engine = Engine(keep_history=True)
+
+        d1 = DataSource(engine, [
+            (t1, 1),
+            (t2, 2),
+            (t4, 5)
+        ])
+
+        out = flatten([d1])
+
+        engine.start(t1, t4)
+
+        t, v = out()[0]
+        self.assertEqual(t, t1)
+        self.assertEqual(v, [1])
+
+        t, v = out()[1]
+        self.assertEqual(t, t2)
+        self.assertEqual(v, [2])
+
+        t, v = out()[2]
+        self.assertEqual(t, t4)
+        self.assertEqual(v, [5])
+
+    def testFlatten2(self):
+        t1 = datetime(2016, 1, 1, 1, 1, 1)
+        t2 = datetime(2016, 1, 1, 1, 1, 2)
+        t3 = datetime(2016, 1, 1, 1, 1, 3)
+        t4 = datetime(2016, 1, 1, 1, 1, 4)
+
+        engine = Engine(keep_history=True)
+
+        d1 = DataSource(engine, [
+            (t1, 1),
+            (t2, 2),
+            (t4, 5)
+        ])
+
+        d2 = DataSource(engine, [
+            (t1, 3),
+            (t3, 4),
+            (t4, 6)
+        ])
+
+        out = flatten([d1, d2])
+
+        engine.start(t1, t4)
+
+        t, v = out()[0]
+        self.assertEqual(t, t1)
+        self.assertEqual(v, [1, 3])
+
+        t, v = out()[1]
+        self.assertEqual(t, t2)
+        self.assertEqual(v, [2])
+
+        t, v = out()[2]
+        self.assertEqual(t, t3)
+        self.assertEqual(v, [4])
+
+        t, v = out()[3]
+        self.assertEqual(t, t4)
+        self.assertEqual(v, [5, 6])
+

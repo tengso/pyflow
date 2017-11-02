@@ -828,14 +828,14 @@ class Flatten2(Flow):
             else:
                 result.append(self.input1())
 
-            if self.input2.is_active():
-                if isinstance(self.input2(), list):
-                    result.extend(self.input2())
-                else:
-                    result.append(self.input2())
+        if self.input2.is_active():
+            if isinstance(self.input2(), list):
+                result.extend(self.input2())
+            else:
+                result.append(self.input2())
 
-            if len(result):
-                self << result
+        if len(result):
+            self << result
 
 
 class Filter(Flow):
@@ -1187,7 +1187,8 @@ def flatten(inputs):
             f = Flatten2(input, rest[0], 'flatten')
             return flatten_internal(f, rest[1:])
         else:
-            return input
+            return Flatten2(input, Empty(input.get_engine()))
+            # return input
 
     if not isinstance(inputs, list):
         inputs = [inputs]
