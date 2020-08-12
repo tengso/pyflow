@@ -362,7 +362,8 @@ class FlowOps:
         # TODO: better check
         if self.__class__ != Flow:
             self.warn('created map for {}:{}', self, item)
-            return MapN(item, lambda value: getattr(value, item), self)
+            print('created map for {}', item)
+            # return MapN(item, lambda value: getattr(value, item), self)
 
     def __mul__(self, other):
         if not isinstance(other, FlowBase):
@@ -664,6 +665,9 @@ class Empty(Source):
 
     def evaluate(self):
         pass
+
+
+
 
 
 class Constant(Source):
@@ -1150,6 +1154,21 @@ class RealTimeSource(Source):
         pass
 
 
+# FIXME:
+class RealTimeEmpty(RealTimeSource):
+    def __init__(self, engine):
+        super().__init__('Empty', engine)
+
+    def start(self, start_time, end_time):
+        pass
+
+    def close(self):
+        pass
+
+    def evaluate(self):
+        pass
+
+
 class RealTimeDataSource(RealTimeSource):
     def __init__(self, name, engine, data):
         super().__init__(name, engine)
@@ -1187,7 +1206,11 @@ def flatten(inputs):
             f = Flatten2(input, rest[0], 'flatten')
             return flatten_internal(f, rest[1:])
         else:
-            return Flatten2(input, Empty(input.get_engine()))
+            engine = input.get_engine()
+            if isinstance(engine, RealTimeEngine):
+                return Flatten2(input, RealTimeEmpty(input.get_engine()))
+            else:
+                return Flatten2(input, Empty(input.get_engine()))
             # return input
 
     if not isinstance(inputs, list):
