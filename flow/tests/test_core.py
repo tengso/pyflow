@@ -3,7 +3,7 @@ import unittest
 from datetime import datetime
 from datetime import timedelta
 from flow.core import Engine, DataSource, Flow, when, Input, Feedback, Constant, Timer, Output, lift, DynamicFlow, \
-    graph, Graph, flatten
+    graph, Graph, flatten, Sample, SampleMethod
 
 
 class TestFlow(unittest.TestCase):
@@ -438,4 +438,72 @@ class TestFlow(unittest.TestCase):
         t, v = out()[3]
         self.assertEqual(t, t4)
         self.assertEqual(v, [5, 6])
+
+    def testSampleFirst(self):
+        values = [(datetime(2016, 1, 1, 1, 1, i * 2), i * 2) for i in range(1, 20)]
+
+        engine = Engine(keep_history=True)
+
+        d = DataSource(engine, values)
+        s = d.sample(timedelta(seconds=7), method=SampleMethod.First)
+
+        engine.start(values[0][0], values[-1][0])
+
+        first_result = s()
+
+        first_expected = [
+            (datetime(2016, 1, 1, 1, 1, 9), 2),
+            (datetime(2016, 1, 1, 1, 1, 16), 10),
+            (datetime(2016, 1, 1, 1, 1, 23), 16),
+            (datetime(2016, 1, 1, 1, 1, 30), 24),
+            (datetime(2016, 1, 1, 1, 1, 37), 30),
+        ]
+
+        self.assertEqual(first_expected, first_result)
+
+    def testSampleLast(self):
+        values = [(datetime(2016, 1, 1, 1, 1, i * 2), i * 2) for i in range(1, 20)]
+
+        engine = Engine(keep_history=True)
+
+        d = DataSource(engine, values)
+        s = d.sample(timedelta(seconds=7), method=SampleMethod.Last)
+
+        engine.start(values[0][0], values[-1][0])
+
+        result = s()
+
+        expected = [
+            (datetime(2016, 1, 1, 1, 1, 9), 8),
+            (datetime(2016, 1, 1, 1, 1, 16), 14),
+            (datetime(2016, 1, 1, 1, 1, 23), 22),
+            (datetime(2016, 1, 1, 1, 1, 30), 28),
+            (datetime(2016, 1, 1, 1, 1, 37), 36),
+        ]
+
+        self.assertEqual(expected, result)
+
+    def testShift(self):
+        values = [(datetime(2016, 1, 1, 1, 1, i), i) for i in range(1, 10)]
+
+        engine = Engine(keep_history=True)
+
+        d = DataSource(engine, values)
+        s = d.shift(2)
+
+        engine.start(values[0][0], values[-1][0])
+
+        result = s()
+        for t, v in result:
+            self.assertEqual(t.second, v + 2)
+
+        # expected = [
+        #     (datetime(2016, 1, 1, 1, 1, 9), 8),
+        #     (datetime(2016, 1, 1, 1, 1, 16), 14),
+        #     (datetime(2016, 1, 1, 1, 1, 23), 22),
+        #     (datetime(2016, 1, 1, 1, 1, 30), 28),
+        #     (datetime(2016, 1, 1, 1, 1, 37), 36),
+        # ]
+        #
+        # self.assertEqual(expected, result)
 

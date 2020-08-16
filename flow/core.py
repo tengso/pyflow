@@ -1,3 +1,4 @@
+from enum import Enum
 import time
 from queue import Queue, Empty as QueueEmpty
 
@@ -18,6 +19,11 @@ from abc import abstractmethod
 class NodeRegistry(object):
     input_registry = {}
     output_registry = {}
+
+    @staticmethod
+    def clear():
+        NodeRegistry.input_registry = {}
+        NodeRegistry.output_registry = {}
 
     @staticmethod
     def get_input(owner, node_id):
@@ -495,17 +501,28 @@ class FlowOps:
         return flatten(input_list + [self])
 
     def probe(self, msg='{}'):
-        def l(i):
-            self.info(msg.format(i))
-            return i
-
-        return MapN('probe', l, self)
+        # def l(i):
+        #     self.info(msg.format(i))
+        #     return i
+        #
+        # return MapN('probe', l, self)
+        self.map(lambda t, v: print(msg, t, v))
 
     def fold(self, init, accum):
         return Fold(self, init, accum)
 
     def map(self, map_fun, name='map'):
         return MapN(name, map_fun, self, timed=True)
+
+    def sample(self, interval: timedelta, method):
+        return Sample(self, interval, method)
+
+    def shift(self, shift):
+        return Shift(self, shift)
+
+    def wait(self, other):
+        w = Wait2(self, other)
+        return MapN('wait', lambda v: v, w.o1), MapN('wait', lambda v: v, w.o2)
 
 
 class FlowBase(FlowOps):
@@ -627,7 +644,8 @@ class FlowBase(FlowOps):
         now = self.now()
         logical_time = now.strftime('%Y-%m-%d %H:%M:%S.%f') if now is not None else ''
         physical_time = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')
-        self.get_logger().log(level, '[{}]-[{}] {}'.format(physical_time, logical_time, log_msg))
+        # self.get_logger().log(level, '[{}]-[{}] {}'.format(physical_time, logical_time, log_msg))
+        self.get_logger().log(level, '[{}] {}'.format(logical_time, log_msg))
 
     def __str__(self):
         return self.name
@@ -652,6 +670,9 @@ class Source(Flow):
 
     def __lt__(self, other):
         return id(self).__lt__(id(other))
+
+    def close(self):
+        pass
 
 
 class Empty(Source):
@@ -909,6 +930,8 @@ class EngineBase:
         self.graph_root = GraphRoot()
         GraphStack.push(self.graph_root)
 
+        NodeRegistry.clear()
+
     def get_logger(self):
         return logging.getLogger(self.logger_name)
 
@@ -993,6 +1016,9 @@ class EngineBase:
 
         if self.listener:
             self.listener.engine_finished(start_time, datetime.datetime.now())
+
+        for source in self.sources:
+            source.close()
 
     def show_graph(self, file_name='graph', show_cycle=False, show_edge_label=True, same_rank=None):
         if same_rank:
@@ -1150,6 +1176,17 @@ class RealTimeSource(Source):
         pass
 
 
+class RealTimeEmpty(RealTimeSource):
+    def __init__(self, engine):
+        super().__init__('RealTimeEmpty', engine)
+
+    def start(self, start_time, end_time):
+        pass
+
+    def close(self):
+        pass
+
+
 class RealTimeDataSource(RealTimeSource):
     def __init__(self, name, engine, data):
         super().__init__(name, engine)
@@ -1187,7 +1224,11 @@ def flatten(inputs):
             f = Flatten2(input, rest[0], 'flatten')
             return flatten_internal(f, rest[1:])
         else:
-            return Flatten2(input, Empty(input.get_engine()))
+            engine = input.get_engine()
+            if isinstance(engine, RealTimeEngine):
+                return Flatten2(input, RealTimeEmpty(engine))
+            else:
+                return Flatten2(input, Empty(engine))
             # return input
 
     if not isinstance(inputs, list):
@@ -1223,10 +1264,11 @@ class DynamicFlow(FlowBase):
 
 
 class MapN(FlowBase):
-    def __init__(self, name, fun, *inputs, timed=False, passive=None):
+    def __init__(self, name, fun, *inputs, timed=False, passive=None, wait_for_all=True):
         super().__init__(name)
         self.fun = fun
         self.timed = timed
+        self.wait_for_all = wait_for_all
 
         self.active_params = []
         self.passive_params = []
@@ -1236,11 +1278,11 @@ class MapN(FlowBase):
         param_pos = {i - timed_adj: name for i, name in enumerate(params.parameters.keys())}
         for pos, input in enumerate(inputs):
             i = Input()
-            if not isinstance(input, FlowBase):
+            if not (isinstance(input, FlowBase) or isinstance(input, OutputNode)):
                 input = Constant(input, self.get_engine())
             i.__set__(self, input)
             param_name = param_pos[pos]
-            if passive is None or param_name not in  passive:
+            if passive is None or param_name not in passive:
                 self.active_params.append(i)
             else:
                 self.passive_params.append(i)
@@ -1250,7 +1292,7 @@ class MapN(FlowBase):
     def handle(self):
         params = [NodeRegistry.get_input(self, id(param)) for param in self.active_params + self.passive_params]
         has_value = [param.has_value() for param in params]
-        if all(has_value):
+        if not self.wait_for_all or all(has_value):
             params = [param() for param in params]
             if self.timed:
                 params = [self.now()] + params
@@ -1262,16 +1304,17 @@ class MapN(FlowBase):
 class lift:
     IS_OFF = False
 
-    def __init__(self, name=None, timed=False, passive=None):
+    def __init__(self, name=None, timed=False, passive=None, wait_for_all=True):
         self.name = name
         self.timed = timed
         self.passive = passive
+        self.wait_for_all = wait_for_all
 
     def __call__(self, fun):
         if not lift.IS_OFF:
             def map_n(*inputs):
                 passive = self.passive if isinstance(self.passive, list) else [self.passive]
-                return MapN(self.name, fun, *inputs, timed=self.timed, passive=passive)
+                return MapN(self.name, fun, *inputs, timed=self.timed, passive=passive, wait_for_all=self.wait_for_all)
             return map_n
         else:
             return fun
@@ -1294,3 +1337,84 @@ class graph:
             return result
 
         return wrapper
+
+
+class SampleMethod(Enum):
+    First = 1
+    Last = 2
+
+
+class Sample(Flow):
+    input = Input()
+    timer = Timer()
+
+    def __init__(self, input, interval, method=SampleMethod.Last):
+        super().__init__('sample')
+        self.interval = interval
+        self.first_cache = None
+        self.last_cache = None
+        self.started = False
+        self.method = method
+
+    @when(timer)
+    def handle(self):
+        if self.method == SampleMethod.First and self.first_cache is not None:
+            self << self.first_cache
+        elif self.method == SampleMethod.Last and self.last_cache is not None:
+            self << self.last_cache
+
+        self.timer = self.now() + self.interval
+        self.first_cache = None
+        self.last_cache = None
+
+    @when(input)
+    def handle(self):
+        if self.first_cache is None:
+            self.first_cache = self.input()
+        self.last_cache = self.input()
+
+        if not self.started:
+            self.timer = self.now() + self.interval
+            self.started = True
+
+
+class Shift(Flow):
+    input = Input()
+
+    def __init__(self, input, shift):
+        super().__init__('shift')
+        assert shift > 0
+        self.shift = shift
+        self.cache = []
+
+    @when(input)
+    def handle(self):
+        self.cache.append(self.input())
+        if len(self.cache) > self.shift:
+            self << self.cache[0]
+            self.cache = self.cache[1:]
+
+
+class Wait2(Flow):
+    i1 = Input()
+    i2 = Input()
+
+    o1 = Output()
+    o2 = Output()
+
+    def __init__(self, i1, i2):
+        super().__init__('wait2')
+        self.wait = True
+
+    @when(i1, i2)
+    def handle(self):
+        if self.wait and self.i1.has_value() and self.i2.has_value():
+            self.o1 = self.i1()
+            self.o2 = self.i2()
+            self.wait = False
+        elif not self.wait:
+            if self.i1.is_active():
+                self.o1 = self.i1()
+            if self.i2.is_active():
+                self.o2 = self.i2()
+
