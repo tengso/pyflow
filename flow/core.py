@@ -1,4 +1,3 @@
-from enum import Enum
 import time
 from queue import Queue, Empty as QueueEmpty
 
@@ -501,12 +500,11 @@ class FlowOps:
         return flatten(input_list + [self])
 
     def probe(self, msg='{}'):
-        # def l(i):
-        #     self.info(msg.format(i))
-        #     return i
-        #
-        # return MapN('probe', l, self)
-        self.map(lambda t, v: print(msg, t, v))
+        def l(i):
+            self.info(msg.format(i))
+            return i
+
+        return MapN('probe', l, self)
 
     def fold(self, init, accum):
         return Fold(self, init, accum)
@@ -644,8 +642,7 @@ class FlowBase(FlowOps):
         now = self.now()
         logical_time = now.strftime('%Y-%m-%d %H:%M:%S.%f') if now is not None else ''
         physical_time = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')
-        # self.get_logger().log(level, '[{}]-[{}] {}'.format(physical_time, logical_time, log_msg))
-        self.get_logger().log(level, '[{}] {}'.format(logical_time, log_msg))
+        self.get_logger().log(level, '[{}]-[{}] {}'.format(physical_time, logical_time, log_msg))
 
     def __str__(self):
         return self.name
