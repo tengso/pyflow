@@ -1,6 +1,6 @@
 import time
 from queue import Queue, Empty as QueueEmpty
-
+from enum import Enum
 from collections import OrderedDict
 from threading import Thread
 from typing import Sequence, Tuple, Any
