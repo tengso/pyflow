@@ -5,6 +5,10 @@ from datetime import timedelta
 from flow.core import Engine, DataSource, Flow, when, Input, Feedback, Constant, Timer, Output, lift, DynamicFlow, \
     graph, Graph, flatten, Sample, SampleMethod
 
+import logging
+
+logging.basicConfig(level=logging.DEBUG)
+
 
 class TestFlow(unittest.TestCase):
     def testDependency(self):

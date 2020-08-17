@@ -1,7 +1,11 @@
 import unittest
 import datetime
 
-from flow.core import RealTimeEngine, RealTimeDataSource, Flow, Input, when
+from flow.core import RealTimeEngine, RealTimeDataSource, Flow, Input, when, Timer
+
+import logging
+
+logging.basicConfig(level=logging.DEBUG)
 
 
 class TestRealTime(unittest.TestCase):
@@ -69,3 +73,53 @@ class TestRealTime(unittest.TestCase):
         for i, (t, v) in enumerate(a()):
             self.assertEqual(v, d1[i][1] + d2[i][1])
             self.assertEqual(t, d2[i][0])
+
+    def testTimer(self):
+        engine = RealTimeEngine(keep_history=True)
+
+        # t1 = datetime.datetime(2016, 8, 1, 10, 11, 12)
+        # t2 = datetime.datetime(2016, 8, 2, 10, 11, 13)
+
+        start_time = datetime.datetime.now()
+        end_time = start_time + datetime.timedelta(seconds=5)
+
+        input1 = [(start_time + datetime.timedelta(seconds=2), 1)]
+        input2 = [(start_time + datetime.timedelta(seconds=3), 2)]
+
+        input1 = RealTimeDataSource('input1', engine, input1)
+        input2 = RealTimeDataSource('input2', engine, input2)
+
+        class Transform(Flow):
+            input1 = Input()
+            input2 = Input()
+
+            timer = Timer()
+
+            def __init__(self, input1, input2, default_value):
+                super().__init__("transform")
+                self.default_value = default_value
+                self.done = False
+
+            @when(input1)
+            def handle(self):
+                self.timer = self.now() + datetime.timedelta(seconds=0.5)
+                print('input1', self.input1())
+
+            @when(input2)
+            def handle(self):
+                # if not self.done:
+                #     self << self.input1() * self.input2()
+                print('input1', self.input2())
+
+            @when(timer)
+            def do_timer(self):
+                print('timer!!')
+                # if not self.input2 and not self.done:
+                #     self << self.input1() * self.default_value
+                #     self.done = True
+
+        t = Transform(input1, input2, 10)
+
+        engine.start(start_time, end_time)
+        # engine.show_graph('timer')
+        # self.assertEqual(t(), [(t1 + datetime.timedelta(minutes=60), 10)])

@@ -272,7 +272,10 @@ class Timer(Input):
 
         time_up = time_up if time_up > now else now + timedelta(microseconds=engine.get_interval())
 
-        timer = FixedTimer(engine, [time_up])
+        if isinstance(engine, RealTimeEngine):
+            timer = RealTimeFixedTimer(engine, [time_up])
+        else:
+            timer = FixedTimer(engine, [time_up])
 
         node = NodeRegistry.get_input(instance, id(self))
 
@@ -1209,6 +1212,33 @@ class RealTimeDataSource(RealTimeSource):
     def evaluate(self):
         self._output = self.data[self.index][1]
         self.index += 1
+
+    # FIXME:
+    def close(self):
+        pass
+
+
+class RealTimeFixedTimer(RealTimeSource):
+    def __init__(self, engine, timestamps):
+        super().__init__('fixed timer', engine)
+        self.timestamps = timestamps
+        self.timestamps.sort()
+        engine.add_source(self)
+        self.start(None, None)
+
+    def evaluate(self):
+        self._output = True
+
+    def start(self, start_time, end_time):
+        def schedule():
+            for t in self.timestamps:
+                wait = t - datetime.datetime.now()
+                if wait.total_seconds() > 0:
+                    time.sleep(wait.total_seconds())
+                self.get_engine().get_queue().put((t, self))
+
+        t = Thread(target=schedule)
+        t.start()
 
     # FIXME:
     def close(self):
