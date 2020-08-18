@@ -1,7 +1,7 @@
 import unittest
 import datetime
 
-from flow.core import RealTimeEngine, RealTimeDataSource, Flow, Input, when, Timer
+from flow.core import RealTimeEngine, RealTimeDataSource, Flow, Input, when, Timer, SampleMethod
 
 import logging
 
@@ -77,14 +77,16 @@ class TestRealTime(unittest.TestCase):
     def testTimer(self):
         engine = RealTimeEngine(keep_history=True)
 
-        # t1 = datetime.datetime(2016, 8, 1, 10, 11, 12)
-        # t2 = datetime.datetime(2016, 8, 2, 10, 11, 13)
-
         start_time = datetime.datetime.now()
         end_time = start_time + datetime.timedelta(seconds=5)
 
-        input1 = [(start_time + datetime.timedelta(seconds=2), 1)]
-        input2 = [(start_time + datetime.timedelta(seconds=3), 2)]
+        input1_time = start_time + datetime.timedelta(seconds=2)
+        input2_time = start_time + datetime.timedelta(seconds=3)
+        input1_value = 1
+        input2_value = 2
+        input1 = [(input1_time, input1_value)]
+        input2 = [(input2_time, input2_value)]
+        default_value = 3
 
         input1 = RealTimeDataSource('input1', engine, input1)
         input2 = RealTimeDataSource('input2', engine, input2)
@@ -107,19 +109,66 @@ class TestRealTime(unittest.TestCase):
 
             @when(input2)
             def handle(self):
-                # if not self.done:
-                #     self << self.input1() * self.input2()
-                print('input1', self.input2())
+                if not self.done:
+                    self << self.input1() + self.input2()
+                else:
+                    self << self.input2()
+                print('input2', self.input2())
 
             @when(timer)
             def do_timer(self):
-                print('timer!!')
-                # if not self.input2 and not self.done:
-                #     self << self.input1() * self.default_value
-                #     self.done = True
+                if not self.input2 and not self.done:
+                    self << self.input1() + self.default_value
+                    self.done = True
 
-        t = Transform(input1, input2, 10)
+        t = Transform(input1, input2, default_value)
+        engine.start(start_time, end_time)
+        result = t()
+        print(t())
+        # engine.show_graph('timer')
+        t, value = result[0]
+        self.assertEqual(t, input1_time + datetime.timedelta(seconds=0.5))
+        self.assertEqual(value, input1_value + default_value)
+        t, value = result[1]
+        self.assertEqual(t, input2_time)
+        self.assertEqual(value, input2_value)
+
+    def testSample(self):
+        engine = RealTimeEngine(keep_history=True)
+
+        start_time = datetime.datetime.now()
+        end_time = start_time + datetime.timedelta(seconds=10)
+
+        data = [
+            (start_time + datetime.timedelta(seconds=1), 1),
+            (start_time + datetime.timedelta(seconds=2), 2),
+            (start_time + datetime.timedelta(seconds=3), 3),
+            (start_time + datetime.timedelta(seconds=4), 4),
+            (start_time + datetime.timedelta(seconds=5), 5),
+            (start_time + datetime.timedelta(seconds=6), 6),
+            (start_time + datetime.timedelta(seconds=7), 7),
+            (start_time + datetime.timedelta(seconds=8), 8),
+        ]
+
+        data = RealTimeDataSource('data', engine, data)
+
+        s = data.sample(datetime.timedelta(seconds=2), SampleMethod.First)
 
         engine.start(start_time, end_time)
+        result = s()
+        print(result)
+
         # engine.show_graph('timer')
-        # self.assertEqual(t(), [(t1 + datetime.timedelta(minutes=60), 10)])
+
+        t, value = result[0]
+        # self.assertEqual(t, input1_time + datetime.timedelta(seconds=0.5))
+        self.assertEqual(value, 1)
+        t, value = result[1]
+        # self.assertEqual(t, input2_time)
+        self.assertEqual(value, 3)
+        t, value = result[2]
+        # self.assertEqual(t, input2_time)
+        self.assertEqual(value, 5)
+        t, value = result[3]
+        # self.assertEqual(t, input2_time)
+        self.assertEqual(value, 7)
