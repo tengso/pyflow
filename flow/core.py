@@ -1150,7 +1150,8 @@ class RealTimeEngine(EngineBase):
                     t, source = self.get_queue().get(block=True, timeout=max_wait)
                     if t > start_time:
                         if self.current_time and t <= self.current_time:
-                            t += timedelta(microseconds=self.interval)
+                            # FIXME: the diff is the engine delay
+                            t = self.current_time + timedelta(microseconds=self.interval)
                         self.current_time = t
 
                         source.evaluate()
