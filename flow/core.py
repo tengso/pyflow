@@ -610,11 +610,7 @@ class FlowBase(FlowOps):
         return values
 
     def __call__(self):
-        result = self.get_output_value().get(self._output, None)
-        if result is None:
-            raise RuntimeError("no result")
-        else:
-            return result
+        return self.get_output_value().get(self._output, None)
 
     def __lshift__(self, other):
         self.debug('result: {}'.format(other))
