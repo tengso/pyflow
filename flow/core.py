@@ -1446,3 +1446,21 @@ class Wait2(Flow):
             if self.i2.is_active():
                 self.o2 = self.i2()
 
+
+class IgnoreRepeat(Flow):
+    i = Input()
+
+    def __init__(self, i, equal_fun=None):
+        super().__init__('ignore repeat')
+        if equal_fun is None:
+            self.equal_fun = lambda a, b: a == b
+        else:
+            self.equal_fun = equal_fun
+
+        self.last = None
+
+    @when(i)
+    def handle(self):
+        if not self.equal_fun(self.i(), self.last):
+            self << self.i()
+            self.last = self.i()
