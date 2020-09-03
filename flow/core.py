@@ -456,6 +456,9 @@ class FlowOps:
     def __ge__(self, other):
         return self.compare(other, lambda in1, in2: in1 >= in2, 'ge(>=)')
 
+    def __len__(self, other):
+        pass
+
     def compare(self, other, fun, name='compare'):
         if not isinstance(other, FlowBase):
             other = Constant(other)
