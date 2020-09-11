@@ -497,13 +497,13 @@ class FlowOps:
 
         return Ignore(self)
 
-    def flatten(self, inputs):
+    def flatten(self, inputs, is_fill_empty=False):
         if not isinstance(inputs, list):
             input_list = [inputs]
         else:
             input_list = inputs
 
-        return flatten(input_list + [self])
+        return flatten(input_list + [self], is_fill_empty=is_fill_empty)
 
     def probe(self, msg='{}'):
         def l(i):
@@ -527,6 +527,9 @@ class FlowOps:
     def wait(self, other):
         w = Wait2(self, other)
         return MapN('wait', lambda v: v, w.o1), MapN('wait', lambda v: v, w.o2)
+
+    def asof(self, asof: datetime.time):
+        return Asof(self, asof)
 
 
 class FlowBase(FlowOps):
@@ -836,8 +839,9 @@ class Flatten2(Flow):
     input1 = Input()
     input2 = Input()
 
-    def __init__(self, input1, input2, name='flatten'):
+    def __init__(self, input1, input2, name='flatten', is_fill_empty=False):
         super().__init__(name)
+        self.is_fill_empty = is_fill_empty
 
     @when(input1, input2)
     def f(self):
@@ -847,12 +851,16 @@ class Flatten2(Flow):
                 result.extend(self.input1())
             else:
                 result.append(self.input1())
+        elif self.is_fill_empty:
+            result.append(None)
 
         if self.input2.is_active():
             if isinstance(self.input2(), list):
                 result.extend(self.input2())
             else:
                 result.append(self.input2())
+        elif self.is_fill_empty:
+            result.append(None)
 
         if len(result):
             self << result
@@ -1245,24 +1253,35 @@ class RealTimeFixedTimer(RealTimeSource):
         pass
 
 
-def flatten(inputs):
+def flatten(inputs, is_fill_empty=False):
     def flatten_internal(input, rest):
         if len(rest):
-            f = Flatten2(input, rest[0], 'flatten')
+            f = Flatten2(input, rest[0], 'flatten', is_fill_empty=is_fill_empty)
             return flatten_internal(f, rest[1:])
         else:
             engine = input.get_engine()
             if isinstance(engine, RealTimeEngine):
-                return Flatten2(input, RealTimeEmpty(engine))
+                return Flatten2(input, RealTimeEmpty(engine), is_fill_empty=False)
             else:
-                return Flatten2(input, Empty(engine))
+                return Flatten2(input, Empty(engine), is_fill_empty=False)
             # return input
 
     if not isinstance(inputs, list):
         inputs = [inputs]
 
     if len(inputs):
-        return flatten_internal(inputs[0], inputs[1:])
+        f = flatten_internal(inputs[0], inputs[1:])
+
+        def fill(t, l):
+            if len(l) < len(inputs):
+                return [None] * (len(inputs) - len(l)) + l
+            else:
+                return l
+
+        if is_fill_empty:
+            return f.map(fill)
+        else:
+            return f
     else:
         return inputs
 
@@ -1463,3 +1482,48 @@ class IgnoreRepeat(Flow):
         if not self.equal_fun(self.i(), self.last):
             self << self.i()
             self.last = self.i()
+
+
+class Asof(Flow):
+    input = Input()
+
+    def __init__(self, input, asof: datetime.time):
+        super().__init__(f'asof: {asof}')
+        self.asof = asof
+        self.is_snapped = False
+
+    @when(input)
+    def handle(self):
+        if not self.is_snapped and self.now().time() >= self.asof:
+            self.is_snapped = True
+            self << self.input()
+
+
+def flow_to_dict(inputs, keep_last=True):
+    keys = list(inputs.keys())
+    values = list(inputs.values())
+    values = flatten(values, is_fill_empty=True)
+    return ToDict(values, keys, keep_last)
+
+
+class ToDict(Flow):
+    li = Input()
+
+    def __init__(self, li, keys, keep_last=True):
+        super().__init__('merge to dict')
+        self.keys = keys
+        self.last_cache = {}
+        self.keep_last = keep_last
+
+    @when(li)
+    def handle(self):
+        merged = self.last_cache if self.keep_last else {}
+
+        for i, value in enumerate(self.li()):
+            if value is not None:
+                merged[self.keys[i]] = value
+
+        if len(merged):
+            self << merged.copy() if self.keep_last else merged
+
+

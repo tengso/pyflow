@@ -1,9 +1,10 @@
 import unittest
 
 from datetime import datetime
+from datetime import time
 from datetime import timedelta
 from flow.core import Engine, DataSource, Flow, when, Input, Feedback, Constant, Timer, Output, lift, DynamicFlow, \
-    graph, Graph, flatten, Sample, SampleMethod
+    graph, Graph, flatten, Sample, SampleMethod, flow_to_dict
 
 import logging
 
@@ -511,3 +512,166 @@ class TestFlow(unittest.TestCase):
         #
         # self.assertEqual(expected, result)
 
+    def testAsof(self):
+        values = [
+            (datetime(2016, 1, 1, 1, 1, 1), 1),
+            (datetime(2016, 1, 1, 1, 1, 2), 2),
+            (datetime(2016, 1, 1, 1, 1, 4), 4),
+            (datetime(2016, 1, 1, 1, 1, 5), 5),
+        ]
+
+        engine = Engine(keep_history=True)
+        d = DataSource(engine, values)
+        s = d.asof(time(1, 1, 3))
+
+        engine.start(values[0][0], values[-1][0])
+
+        result = s()
+        self.assertEqual(len(result), 1)
+        ts, v = result[0]
+        self.assertEqual(ts, values[2][0])
+        self.assertEqual(v, 4)
+
+        engine = Engine(keep_history=True)
+        d = DataSource(engine, values)
+        s = d.asof(time(1, 1, 4))
+
+        engine.start(values[0][0], values[-1][0])
+
+        result = s()
+        self.assertEqual(len(result), 1)
+        ts, v = result[0]
+        self.assertEqual(ts, values[2][0])
+        self.assertEqual(v, 4)
+
+        engine = Engine(keep_history=True)
+        d = DataSource(engine, values)
+        s = d.asof(time(1, 1, 0))
+
+        engine.start(values[0][0], values[-1][0])
+
+        result = s()
+        self.assertEqual(len(result), 1)
+        ts, v = result[0]
+        self.assertEqual(ts, values[0][0])
+        self.assertEqual(v, 1)
+
+        engine = Engine(keep_history=True)
+        d = DataSource(engine, values)
+        s = d.asof(time(1, 1, 5, 5))
+
+        engine.start(values[0][0], values[-1][0] + timedelta(seconds=2))
+
+        result = s()
+        self.assertEqual(result, None)
+
+    def testFlatten3(self):
+        t0 = datetime(2016, 1, 1, 1, 1, 0)
+        t1 = datetime(2016, 1, 1, 1, 1, 1)
+        t2 = datetime(2016, 1, 1, 1, 1, 2)
+        t3 = datetime(2016, 1, 1, 1, 1, 3)
+        t4 = datetime(2016, 1, 1, 1, 1, 4)
+        t5 = datetime(2016, 1, 1, 1, 1, 5)
+
+        engine = Engine(keep_history=True)
+
+        d1 = DataSource(engine, [
+            (t0, 0.5),
+            (t1, 1),
+            (t2, 2),
+            (t4, 5)
+        ])
+
+        d2 = DataSource(engine, [
+            (t1, 3),
+            (t3, 4),
+            (t4, 6)
+        ])
+
+        d3 = DataSource(engine, [
+            (t1, 9),
+            (t3, 10),
+            (t5, 11),
+        ])
+
+        out = flatten([d1, d2, d3], is_fill_empty=True)
+        engine.start(t0, t5)
+        o = out()
+        print(o)
+
+        t, v = o[1]
+        self.assertEqual(t, t1)
+        self.assertEqual([1, 3, 9], v)
+
+        t, v = o[2]
+        self.assertEqual(t, t2)
+        self.assertEqual([2, None, None], v)
+
+        t, v = o[3]
+        self.assertEqual(t, t3)
+        self.assertEqual([None, 4, 10], v)
+
+        t, v = o[4]
+        self.assertEqual(t, t4)
+        self.assertEqual([5, 6, None], v)
+
+        t, v = o[5]
+        self.assertEqual(t, t5)
+        self.assertEqual([None, None, 11], v)
+
+    def testToDict(self):
+        t0 = datetime(2016, 1, 1, 1, 1, 0)
+        t1 = datetime(2016, 1, 1, 1, 1, 1)
+        t2 = datetime(2016, 1, 1, 1, 1, 2)
+        t3 = datetime(2016, 1, 1, 1, 1, 3)
+        t4 = datetime(2016, 1, 1, 1, 1, 4)
+        t5 = datetime(2016, 1, 1, 1, 1, 5)
+
+        engine = Engine(keep_history=True)
+
+        d1 = DataSource(engine, [
+            (t0, 0.5),
+            (t1, 1),
+            (t2, 2),
+            (t4, 5)
+        ])
+
+        d2 = DataSource(engine, [
+            (t1, 3),
+            (t3, 4),
+            (t4, 6)
+        ])
+
+        d3 = DataSource(engine, [
+            (t1, 9),
+            (t3, 10),
+            (t5, 11),
+        ])
+
+        out = flow_to_dict({'d1': d1, 'd2': d2, 'd3': d3})
+        engine.start(t0, t5)
+        o = out()
+
+        t, v = o[0]
+        self.assertEqual(t, t0)
+        self.assertEqual(dict(d1=0.5), v)
+
+        t, v = o[1]
+        self.assertEqual(t, t1)
+        self.assertEqual(dict(d1=1, d2=3, d3=9), v)
+
+        t, v = o[2]
+        self.assertEqual(t, t2)
+        self.assertEqual(dict(d1=2, d2=3, d3=9), v)
+
+        t, v = o[3]
+        self.assertEqual(t, t3)
+        self.assertEqual(dict(d1=2, d2=4, d3=10), v)
+
+        t, v = o[4]
+        self.assertEqual(t, t4)
+        self.assertEqual(dict(d1=5, d2=6, d3=10), v)
+
+        t, v = o[5]
+        self.assertEqual(t, t5)
+        self.assertEqual(dict(d1=5, d2=6, d3=11), v)
