@@ -374,15 +374,23 @@ class FlowOps:
 
     def __mul__(self, other):
         if not isinstance(other, FlowBase):
-            other = Constant(other)
-            self.get_engine().add_source(other)
+            engine = self.get_engine()
+            if isinstance(engine, RealTimeEngine):
+                other = RealTimeConstant(other, engine)
+            else:
+                other = Constant(other)
+                engine.add_source(other)
 
         return MapN('mul(*)', lambda input1, input2: input1 * input2, self, other)
 
     def __rmul__(self, other):
         if not isinstance(other, FlowBase):
-            other = Constant(other)
-            self.get_engine().add_source(other)
+            engine = self.get_engine()
+            if isinstance(engine, RealTimeEngine):
+                other = RealTimeConstant(other, engine)
+            else:
+                other = Constant(other)
+                engine.add_source(other)
 
         return MapN('mul(*)', lambda input1, input2: input1 * input2, other, self)
 
@@ -529,7 +537,11 @@ class FlowOps:
         return MapN('wait', lambda v: v, w.o1), MapN('wait', lambda v: v, w.o2)
 
     def asof(self, asof: datetime.time):
+        # return the closest value until *after* time
         return Asof(self, asof)
+
+    def rolling(self, window: datetime.timedelta):
+        return Rolling(self, window)
 
 
 class FlowBase(FlowOps):
@@ -1226,6 +1238,25 @@ class RealTimeDataSource(RealTimeSource):
         pass
 
 
+class RealTimeConstant(RealTimeSource):
+    def __init__(self, value, engine):
+        super().__init__(f"constant: {value}", engine)
+        self.value = value
+
+    def start(self, start_time, end_time):
+        self.get_engine().get_queue().put((datetime.datetime.now(), self))
+
+    def evaluate(self):
+        self._output = self.value
+
+    # FIXME:
+    def close(self):
+        pass
+
+    def __str__(self):
+        return str(self.value)
+
+
 class RealTimeFixedTimer(RealTimeSource):
     def __init__(self, engine, timestamps):
         super().__init__('fixed timer', engine)
@@ -1525,5 +1556,30 @@ class ToDict(Flow):
 
         if len(merged):
             self << merged.copy() if self.keep_last else merged
+
+
+class Rolling(Flow):
+    input = Input()
+
+    def __init__(self, input, window: datetime.timedelta):
+        super().__init__('rolling')
+        self.cache = []
+        self.window = window
+
+    @when(input)
+    def handle(self):
+        self.cache.append((self.now(), self.input()))
+
+        cutoff_index = None
+        for i in range(0, len(self.cache)):
+            cutoff = self.now() - self.window
+            ts, _ = self.cache[i]
+            if ts >= cutoff:
+                cutoff_index = i
+                break
+        if cutoff_index is not None:
+            self.cache = self.cache[cutoff_index:]
+
+        self << [c for _, c in self.cache]
 
 
