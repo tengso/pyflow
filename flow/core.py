@@ -1181,6 +1181,9 @@ class RealTimeEngine(EngineBase):
                     break
             except QueueEmpty as e:
                 break
+            except RuntimeError as e:
+                print(e)
+                break
 
 
 class RealTimeSource(Source):
