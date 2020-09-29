@@ -675,3 +675,66 @@ class TestFlow(unittest.TestCase):
         t, v = o[5]
         self.assertEqual(t, t5)
         self.assertEqual(dict(d1=5, d2=6, d3=11), v)
+
+    def testRolling(self):
+        t0 = datetime(2016, 1, 1, 1, 1, 0)
+        t1 = datetime(2016, 1, 1, 1, 1, 1)
+        t2 = datetime(2016, 1, 1, 1, 1, 2)
+        t3 = datetime(2016, 1, 1, 1, 1, 3)
+        t4 = datetime(2016, 1, 1, 1, 1, 4)
+        t5 = datetime(2016, 1, 1, 1, 1, 5)
+        t6 = datetime(2016, 1, 1, 1, 1, 8)
+        t7 = datetime(2016, 1, 1, 1, 1, 8, 5)
+
+        engine = Engine(keep_history=True)
+
+        d = DataSource(engine, [
+            (t0, 0),
+            (t1, 1),
+            (t2, 2),
+            (t3, 3),
+            (t4, 4),
+            (t5, 5),
+            (t6, 6),
+            (t7, 7),
+        ])
+
+        window = timedelta(seconds=2)
+        out = d.rolling(window)
+        engine.start(t0, t7)
+        o = out()
+
+        self.assertEqual(len(o), 8)
+
+        t, v = o[0]
+        self.assertEqual(t0, t)
+        self.assertEqual([0], v)
+
+        t, v = o[1]
+        self.assertEqual(t1, t)
+        self.assertEqual([0, 1], v)
+
+        t, v = o[2]
+        self.assertEqual(t2, t)
+        self.assertEqual([0, 1, 2], v)
+
+        t, v = o[3]
+        self.assertEqual(t3, t)
+        self.assertEqual([1, 2, 3], v)
+
+        t, v = o[4]
+        self.assertEqual(t4, t)
+        self.assertEqual([2, 3, 4], v)
+
+        t, v = o[5]
+        self.assertEqual(t5, t)
+        self.assertEqual([3, 4, 5], v)
+
+        t, v = o[6]
+        self.assertEqual(t6, t)
+        self.assertEqual([6], v)
+
+        t, v = o[7]
+        self.assertEqual(t7, t)
+        self.assertEqual([6, 7], v)
+
