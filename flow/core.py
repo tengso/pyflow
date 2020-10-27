@@ -731,6 +731,10 @@ class Feedback(Source):
         self.processed = set()
         self.engine = engine
         self.engine.add_source(self)
+        self.is_real_time = isinstance(engine, RealTimeEngine)
+
+    def start(self, start_time, end_time):
+        pass
 
     def __lshift__(self, other):
         self.set_input(other)
@@ -738,7 +742,7 @@ class Feedback(Source):
     def set_input(self, feedback):
         self.feedback = feedback
 
-    def peek(self, start_time, end_time):
+    def check(self, start_time, end_time):
         input = self.get_inputs()[0]
         feedback_value = input.get_parent().get_last_value_with_time()
         if feedback_value is not None:
@@ -748,6 +752,14 @@ class Feedback(Source):
                 return self, time + timedelta(microseconds=self.engine.get_interval())
 
         return self, None
+
+    def peek(self, start_time, end_time):
+        node, time = self.check(start_time, end_time)
+        if self.is_real_time and time is not None:
+            # FIXME: feedback event should have highest priority
+            self.get_engine().get_queue().put((time, node))
+        else:
+            return node, time
 
     def evaluate(self):
         self._output = self.get_inputs()[0].get_parent().get_last_value()
@@ -1145,6 +1157,7 @@ class Engine(EngineBase):
 class RealTimeEngine(EngineBase):
     def __init__(self, keep_history=False):
         super().__init__(keep_history)
+        # FIxME: should use priority queue for feedback events
         self.event_queue = Queue()
 
     def get_queue(self):
@@ -1154,7 +1167,9 @@ class RealTimeEngine(EngineBase):
         for source in self.sources:
             source.start(start_time, end_time)
 
-        sorted_list = [n for n in self.sort() if not isinstance(n, Source)]
+        sorted_nodes = self.sort()
+        sorted_list = [n for n in sorted_nodes if not isinstance(n, Source)]
+        feedback_list = [source for source in self.sources if isinstance(source, Feedback)]
 
         wait = start_time - datetime.datetime.now()
         if wait.total_seconds() > 0:
@@ -1177,6 +1192,9 @@ class RealTimeEngine(EngineBase):
 
                         for n in sorted_list:
                             n.evaluate()
+
+                        for feedback in feedback_list:
+                            feedback.peek(start_time, end_time)
                 else:
                     break
             except QueueEmpty as e:

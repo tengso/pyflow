@@ -1,7 +1,8 @@
 import unittest
 import datetime
+import time
 
-from flow.core import RealTimeEngine, RealTimeDataSource, Flow, Input, when, Timer, SampleMethod
+from flow.core import RealTimeEngine, RealTimeDataSource, Flow, Input, when, Timer, SampleMethod, Feedback, Output
 
 import logging
 
@@ -172,3 +173,96 @@ class TestRealTime(unittest.TestCase):
         t, value = result[3]
         # self.assertEqual(t, input2_time)
         self.assertEqual(value, 7)
+
+    def testFeedback(self):
+
+        class N(Flow):
+            input1 = Input()
+            input2 = Input()
+
+            def __init__(self, input1, input2):
+                super().__init__()
+
+            @when(input1, input2)
+            def h(self):
+                time.sleep(1)
+                if self.input1:
+                    self << self.input1() + 1
+                else:
+                    self << self.input2()
+
+        engine = RealTimeEngine()
+
+        n_1 = Feedback(engine)
+        start_time = datetime.datetime.now()
+        end_time = start_time + datetime.timedelta(seconds=5)
+        n = N(n_1, RealTimeDataSource('', engine, [(start_time + datetime.timedelta(seconds=0.5), 1)]))
+
+        n_1 << n
+
+        # engine.show_graph(show_cycle=True)
+        engine.start(start_time, end_time)
+
+        self.assertEqual(n()[0][1], 5)
+
+    def testFeedback2(self):
+
+        class PlaceOrder(Flow):
+            error_message = Input()
+            action = Input()
+
+            def __init__(self, error_message, action):
+                super().__init__()
+                self.counter = 0
+
+            @when(error_message)
+            def h(self):
+                self << self.error_message()
+
+            @when(action)
+            def h(self):
+                self << self.counter
+                self.counter += 1
+
+        engine = RealTimeEngine(keep_history=True)
+
+        error_message = Feedback(engine)
+
+        start_time = datetime.datetime.now()
+        end_time = start_time + datetime.timedelta(seconds=5)
+
+        action = [
+            (start_time + datetime.timedelta(seconds=1), True),
+            (start_time + datetime.timedelta(seconds=2), True),
+            (start_time + datetime.timedelta(seconds=3), True),
+            (start_time + datetime.timedelta(seconds=4), True),
+        ]
+
+        place = PlaceOrder(error_message, RealTimeDataSource('', engine, action))
+
+        error_message << place.filter(lambda _, v: v == 2).map(lambda _, v: 'error')
+
+        # engine.show_graph(show_cycle=True)
+        engine.start(start_time, end_time)
+
+        # print(place())
+        # print(error_message())
+
+        e = error_message()
+        p = place()
+
+        self.assertEqual(len(e), 1)
+
+        t, message = e[0]
+        self.assertEqual(message, 'error')
+
+        before_error_time = [t for t, v in p if v == 2][0]
+        before_error_index = [i for i, (t, v) in enumerate(p) if v == 2][0]
+
+        self.assertEqual(t, before_error_time + datetime.timedelta(microseconds=1))
+
+        t, v = p[before_error_index + 1]
+        self.assertEqual(t, before_error_time + datetime.timedelta(microseconds=1))
+        self.assertEqual(v, 'error')
+
+
