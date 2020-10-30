@@ -522,7 +522,7 @@ class TestFlow(unittest.TestCase):
 
         engine = Engine(keep_history=True)
         d = DataSource(engine, values)
-        s = d.asof(time(1, 1, 3))
+        s = d.snap(time(1, 1, 3))
 
         engine.start(values[0][0], values[-1][0])
 
@@ -534,7 +534,7 @@ class TestFlow(unittest.TestCase):
 
         engine = Engine(keep_history=True)
         d = DataSource(engine, values)
-        s = d.asof(time(1, 1, 4))
+        s = d.snap(time(1, 1, 4))
 
         engine.start(values[0][0], values[-1][0])
 
@@ -546,7 +546,7 @@ class TestFlow(unittest.TestCase):
 
         engine = Engine(keep_history=True)
         d = DataSource(engine, values)
-        s = d.asof(time(1, 1, 0))
+        s = d.snap(time(1, 1, 0))
 
         engine.start(values[0][0], values[-1][0])
 
@@ -558,7 +558,7 @@ class TestFlow(unittest.TestCase):
 
         engine = Engine(keep_history=True)
         d = DataSource(engine, values)
-        s = d.asof(time(1, 1, 5, 5))
+        s = d.snap(time(1, 1, 5, 5))
 
         engine.start(values[0][0], values[-1][0] + timedelta(seconds=2))
 

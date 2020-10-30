@@ -536,9 +536,9 @@ class FlowOps:
         w = Wait2(self, other)
         return MapN('wait', lambda v: v, w.o1), MapN('wait', lambda v: v, w.o2)
 
-    def asof(self, asof: datetime.time):
+    def snap(self, asof: datetime.time):
         # return the closest value until *after* time
-        return Asof(self, asof)
+        return Snap(self, asof)
 
     def rolling(self, window: datetime.timedelta):
         return Rolling(self, window)
@@ -1536,7 +1536,7 @@ class IgnoreRepeat(Flow):
             self.last = self.i()
 
 
-class Asof(Flow):
+class Snap(Flow):
     input = Input()
 
     def __init__(self, input, asof: datetime.time):
