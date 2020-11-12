@@ -274,6 +274,7 @@ class Timer(Input):
 
         if isinstance(engine, RealTimeEngine):
             timer = RealTimeFixedTimer(engine, [time_up])
+            timer.start(None, None)
         else:
             timer = FixedTimer(engine, [time_up])
 
@@ -536,9 +537,10 @@ class FlowOps:
         w = Wait2(self, other)
         return MapN('wait', lambda v: v, w.o1), MapN('wait', lambda v: v, w.o2)
 
-    def snap(self, asof: datetime.time):
-        # return the closest value until *after* time
-        return Snap(self, asof)
+    def snap(self, asof: datetime.datetime):
+        engine = self.get_engine()
+        timer = RealTimeFixedTimer(engine, timestamps=[asof]) if isinstance(engine, RealTimeEngine) else FixedTimer(engine, timestamps=[asof])
+        return Snap(self, timer)
 
     def rolling(self, window: datetime.timedelta):
         return Rolling(self, window)
@@ -1283,8 +1285,8 @@ class RealTimeFixedTimer(RealTimeSource):
         super().__init__('fixed timer', engine)
         self.timestamps = timestamps
         self.timestamps.sort()
-        engine.add_source(self)
-        self.start(None, None)
+        # engine.add_source(self)
+        # self.start(None, None)
 
     def evaluate(self):
         self._output = True
@@ -1537,18 +1539,25 @@ class IgnoreRepeat(Flow):
 
 
 class Snap(Flow):
-    input = Input()
+    value = Input()
+    trigger = Input()
 
-    def __init__(self, input, asof: datetime.time):
-        super().__init__(f'asof: {asof}')
-        self.asof = asof
+    def __init__(self, value, trigger):
+        super().__init__('snap')
+        self.cache = None
         self.is_snapped = False
 
-    @when(input)
+    @when(value)
     def handle(self):
-        if not self.is_snapped and self.now().time() >= self.asof:
+        if not self.is_snapped:
+            self.cache = self.value()
+
+    @when(trigger)
+    def handle(self):
+        if not self.is_snapped:
             self.is_snapped = True
-            self << self.input()
+            if self.cache is not None:
+                self << self.cache
 
 
 def flow_to_dict(inputs, keep_last=True):

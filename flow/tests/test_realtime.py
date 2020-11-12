@@ -140,7 +140,7 @@ class TestRealTime(unittest.TestCase):
         start_time = datetime.datetime.now()
         end_time = start_time + datetime.timedelta(seconds=10)
 
-        data = [
+        raw_data = [
             (start_time + datetime.timedelta(seconds=1), 1),
             (start_time + datetime.timedelta(seconds=2), 2),
             (start_time + datetime.timedelta(seconds=3), 3),
@@ -151,12 +151,13 @@ class TestRealTime(unittest.TestCase):
             (start_time + datetime.timedelta(seconds=8), 8),
         ]
 
-        data = RealTimeDataSource('data', engine, data)
+        data = RealTimeDataSource('data', engine, raw_data)
 
         s = data.sample(datetime.timedelta(seconds=2), SampleMethod.First)
 
         engine.start(start_time, end_time)
         result = s()
+        print(raw_data)
         print(result)
 
         # engine.show_graph('timer')
@@ -164,15 +165,18 @@ class TestRealTime(unittest.TestCase):
         t, value = result[0]
         # self.assertEqual(t, input1_time + datetime.timedelta(seconds=0.5))
         self.assertEqual(value, 1)
+
         t, value = result[1]
         # self.assertEqual(t, input2_time)
-        self.assertEqual(value, 3)
+        self.assertEqual(value, 4)
+
         t, value = result[2]
         # self.assertEqual(t, input2_time)
-        self.assertEqual(value, 5)
+        self.assertEqual(value, 6)
+
         t, value = result[3]
         # self.assertEqual(t, input2_time)
-        self.assertEqual(value, 7)
+        self.assertEqual(value, 8)
 
     def testFeedback(self):
 
@@ -264,5 +268,58 @@ class TestRealTime(unittest.TestCase):
         t, v = p[before_error_index + 1]
         self.assertEqual(t, before_error_time + datetime.timedelta(microseconds=1))
         self.assertEqual(v, 'error')
+
+    def testSnap(self):
+        engine = RealTimeEngine(keep_history=True)
+        now = datetime.datetime.now()
+        snap_time = now + datetime.timedelta(seconds=1.5)
+        values = RealTimeDataSource('test', engine, [
+            (now + datetime.timedelta(seconds=1), 1),
+            (now + datetime.timedelta(seconds=2), 2),
+            (now + datetime.timedelta(seconds=3), 3),
+        ])
+        s = values.snap(snap_time)
+        engine.start(now, now + datetime.timedelta(seconds=4))
+        print(s())
+        self.assertEqual(s()[0][1], 1)
+
+        engine = RealTimeEngine(keep_history=True)
+        now = datetime.datetime.now()
+        snap_time = now + datetime.timedelta(seconds=2.5)
+        values = RealTimeDataSource('test', engine, [
+            (now + datetime.timedelta(seconds=1), 1),
+            (now + datetime.timedelta(seconds=2), 2),
+            (now + datetime.timedelta(seconds=3), 3),
+        ])
+        s = values.snap(snap_time)
+        engine.start(now, now + datetime.timedelta(seconds=4))
+        print(s())
+        self.assertEqual(s()[0][1], 2)
+
+        engine = RealTimeEngine(keep_history=True)
+        now = datetime.datetime.now()
+        snap_time = now + datetime.timedelta(seconds=0.5)
+        values = RealTimeDataSource('test', engine, [
+            (now + datetime.timedelta(seconds=1), 1),
+            (now + datetime.timedelta(seconds=2), 2),
+            (now + datetime.timedelta(seconds=3), 3),
+        ])
+        s = values.snap(snap_time)
+        engine.start(now, now + datetime.timedelta(seconds=4))
+        print(s())
+        self.assertEqual(s(), [])
+
+        engine = RealTimeEngine(keep_history=True)
+        now = datetime.datetime.now()
+        snap_time = now + datetime.timedelta(seconds=1)
+        values = RealTimeDataSource('test', engine, [
+            (now + datetime.timedelta(seconds=2), 1),
+            (now + datetime.timedelta(seconds=3), 2),
+            (now + datetime.timedelta(seconds=4), 3),
+        ])
+        s = values.snap(snap_time)
+        engine.start(now, now + datetime.timedelta(seconds=4))
+        print(s())
+        self.assertEqual(s(), [])
 
 

@@ -4,7 +4,7 @@ from datetime import datetime
 from datetime import time
 from datetime import timedelta
 from flow.core import Engine, DataSource, Flow, when, Input, Feedback, Constant, Timer, Output, lift, DynamicFlow, \
-    graph, Graph, flatten, Sample, SampleMethod, flow_to_dict
+    graph, Graph, flatten, Sample, SampleMethod, flow_to_dict, FixedTimer
 
 import logging
 
@@ -512,59 +512,6 @@ class TestFlow(unittest.TestCase):
         #
         # self.assertEqual(expected, result)
 
-    def testAsof(self):
-        values = [
-            (datetime(2016, 1, 1, 1, 1, 1), 1),
-            (datetime(2016, 1, 1, 1, 1, 2), 2),
-            (datetime(2016, 1, 1, 1, 1, 4), 4),
-            (datetime(2016, 1, 1, 1, 1, 5), 5),
-        ]
-
-        engine = Engine(keep_history=True)
-        d = DataSource(engine, values)
-        s = d.snap(time(1, 1, 3))
-
-        engine.start(values[0][0], values[-1][0])
-
-        result = s()
-        self.assertEqual(len(result), 1)
-        ts, v = result[0]
-        self.assertEqual(ts, values[2][0])
-        self.assertEqual(v, 4)
-
-        engine = Engine(keep_history=True)
-        d = DataSource(engine, values)
-        s = d.snap(time(1, 1, 4))
-
-        engine.start(values[0][0], values[-1][0])
-
-        result = s()
-        self.assertEqual(len(result), 1)
-        ts, v = result[0]
-        self.assertEqual(ts, values[2][0])
-        self.assertEqual(v, 4)
-
-        engine = Engine(keep_history=True)
-        d = DataSource(engine, values)
-        s = d.snap(time(1, 1, 0))
-
-        engine.start(values[0][0], values[-1][0])
-
-        result = s()
-        self.assertEqual(len(result), 1)
-        ts, v = result[0]
-        self.assertEqual(ts, values[0][0])
-        self.assertEqual(v, 1)
-
-        engine = Engine(keep_history=True)
-        d = DataSource(engine, values)
-        s = d.snap(time(1, 1, 5, 5))
-
-        engine.start(values[0][0], values[-1][0] + timedelta(seconds=2))
-
-        result = s()
-        self.assertEqual(result, None)
-
     def testFlatten3(self):
         t0 = datetime(2016, 1, 1, 1, 1, 0)
         t1 = datetime(2016, 1, 1, 1, 1, 1)
@@ -738,3 +685,37 @@ class TestFlow(unittest.TestCase):
         self.assertEqual(t7, t)
         self.assertEqual([6, 7], v)
 
+    def testSnap(self):
+        engine = Engine(keep_history=True)
+        snap_time = datetime(2020, 11, 8, 4, 45, 30)
+        values = DataSource(engine, [
+            (datetime(2020, 11, 8, 4, 45), 1),
+            (datetime(2020, 11, 8, 4, 46), 2),
+            (datetime(2020, 11, 8, 4, 47), 3),
+        ])
+        s = values.snap(snap_time)
+        engine.start(datetime(2020, 11, 8, 4, 44), datetime(2020, 11, 8, 4, 47))
+        self.assertEqual(s(), [(datetime(2020, 11, 8, 4, 45, 30), 1)])
+
+        engine = Engine(keep_history=True)
+        snap_time = datetime(2020, 11, 8, 4, 46)
+        values = DataSource(engine, [
+            (datetime(2020, 11, 8, 4, 45), 1),
+            (datetime(2020, 11, 8, 4, 46), 2),
+            (datetime(2020, 11, 8, 4, 47), 3),
+        ])
+        s = values.snap(snap_time)
+        engine.start(datetime(2020, 11, 8, 4, 44), datetime(2020, 11, 8, 4, 48))
+        self.assertEqual(s(), [(datetime(2020, 11, 8, 4, 46), 2)])
+
+        engine = Engine(keep_history=True)
+        snap_time = datetime(2020, 11, 8, 4, 43)
+        values = DataSource(engine, [
+            (datetime(2020, 11, 8, 4, 45), 1),
+            (datetime(2020, 11, 8, 4, 46), 2),
+            (datetime(2020, 11, 8, 4, 47), 3),
+        ])
+        s = values.snap(snap_time)
+        engine.start(datetime(2020, 11, 8, 4, 41), datetime(2020, 11, 8, 4, 48))
+        # print(s())
+        self.assertEqual(s(), None)
