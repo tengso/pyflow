@@ -545,6 +545,9 @@ class FlowOps:
     def rolling(self, window: datetime.timedelta):
         return Rolling(self, window)
 
+    def until(self, asof: datetime.datetime):
+        return Until(self, asof)
+
 
 class FlowBase(FlowOps):
     _output = Output()
@@ -1103,6 +1106,12 @@ class EngineBase:
 
         return traverse_graph(self.graph_root, visitor)
 
+    def create_constant(self, value):
+        if isinstance(self, RealTimeEngine):
+            return RealTimeConstant(value, self)
+        else:
+            return Constant(value, self)
+
 
 class Engine(EngineBase):
     def _start(self, start_time, end_time):
@@ -1611,5 +1620,18 @@ class Rolling(Flow):
             self.cache = self.cache[cutoff_index:]
 
         self << [c for _, c in self.cache]
+
+
+class Until(Flow):
+    value = Input()
+
+    def __init__(self, value, asof):
+        super().__init__('until')
+        self.asof = asof
+
+    @when(value)
+    def handle(self):
+        if self.now() <= self.asof:
+            self << self.value()
 
 
