@@ -530,6 +530,9 @@ class FlowOps:
     def sample(self, interval: timedelta, method):
         return Sample(self, interval, method)
 
+    def fast_sample(self):
+        return FastSample(self)
+
     def shift(self, shift):
         return Shift(self, shift)
 
@@ -547,6 +550,9 @@ class FlowOps:
 
     def until(self, asof: datetime.datetime):
         return Until(self, asof)
+
+    def start(self, asof: datetime.datetime):
+        return Start(self, asof)
 
 
 class FlowBase(FlowOps):
@@ -1487,6 +1493,20 @@ class Sample(Flow):
             self.started = True
 
 
+class FastSample(Flow):
+    value = Input()
+
+    def __init__(self, value):
+        super().__init__('fast_sample')
+        self.last_ts = None
+
+    @when(value)
+    def handle(self):
+        if self.last_ts is None or self.now().second != self.last_ts.second:
+            self.last_ts = self.now()
+            self << self.value()
+
+
 class Shift(Flow):
     input = Input()
 
@@ -1632,6 +1652,19 @@ class Until(Flow):
     @when(value)
     def handle(self):
         if self.now() <= self.asof:
+            self << self.value()
+
+
+class Start(Flow):
+    value = Input()
+
+    def __init__(self, value, asof):
+        super().__init__('start')
+        self.asof = asof
+
+    @when(value)
+    def handle(self):
+        if self.now() >= self.asof:
             self << self.value()
 
 
