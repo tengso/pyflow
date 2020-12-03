@@ -1157,7 +1157,7 @@ class Engine(EngineBase):
             if self.current_time < start_time or self.current_time > end_time:
                 break
 
-            self.log(self.logger_level, 'start cycle')
+            self.log(logging.DEBUG, 'start cycle')
 
             for n in next_sources + sorted_list:
                 if self.listener:
@@ -1379,11 +1379,12 @@ class DynamicFlow(FlowBase):
 
 
 class MapN(FlowBase):
-    def __init__(self, name, fun, *inputs, timed=False, passive=None, wait_for_all=True):
+    def __init__(self, name, fun, *inputs, timed=False, passive=None, wait_for_all=True, pass_self=False):
         super().__init__(name)
         self.fun = fun
         self.timed = timed
         self.wait_for_all = wait_for_all
+        self.pass_self = pass_self
 
         self.active_params = []
         self.passive_params = []
@@ -1411,6 +1412,8 @@ class MapN(FlowBase):
             params = [param() for param in params]
             if self.timed:
                 params = [self.now()] + params
+            if self.pass_self:
+                params = [self] + params
             v = self.fun(*params)
             if v is not None:
                 self << v
@@ -1419,17 +1422,18 @@ class MapN(FlowBase):
 class lift:
     IS_OFF = False
 
-    def __init__(self, name=None, timed=False, passive=None, wait_for_all=True):
+    def __init__(self, name=None, timed=False, passive=None, wait_for_all=True, pass_self=False):
         self.name = name
         self.timed = timed
         self.passive = passive
         self.wait_for_all = wait_for_all
+        self.pass_self = pass_self
 
     def __call__(self, fun):
         if not lift.IS_OFF:
             def map_n(*inputs):
                 passive = self.passive if isinstance(self.passive, list) else [self.passive]
-                return MapN(self.name, fun, *inputs, timed=self.timed, passive=passive, wait_for_all=self.wait_for_all)
+                return MapN(self.name, fun, *inputs, timed=self.timed, passive=passive, wait_for_all=self.wait_for_all, pass_self=self.pass_self)
             return map_n
         else:
             return fun
