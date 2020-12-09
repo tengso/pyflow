@@ -160,7 +160,8 @@ class OutputNode(Node):
         return self.values
 
     def is_active(self, timestamp):
-        return self.last_time and self.last_time == timestamp
+        # return self.last_time and self.last_time == timestamp
+        return self.last_time == timestamp
 
 
 class InputNode(Node):
@@ -611,7 +612,7 @@ class FlowBase(FlowOps):
         if len(active_ids):
             code_list = WhenBlockRegistry.get_code_list(active_ids)
 
-            self.debug('evaluating')
+            self.debug(f'{self.name}: evaluating')
 
             for code in code_list:
                 code(self)
@@ -1124,10 +1125,11 @@ class Engine(EngineBase):
         sorted_list = [n for n in self.sort() if not isinstance(n, Source)]
 
         queue = []
+        queue_cache = {}
         feedbacks = [source for source in self.sources if isinstance(source, Feedback)]
 
         def is_in_queue(source):
-            return any((t, s) for (t, s) in queue if s == source)
+            return source in queue_cache
 
         while True:
             for feedback in feedbacks:
@@ -1135,12 +1137,14 @@ class Engine(EngineBase):
                     s, t = feedback.peek(start_time, end_time)
                     if t is not None:
                         heapq.heappush(queue, (t, s))
+                        queue_cache[s] = True
 
             for source in self.sources:
                 if not isinstance(source, Feedback) and not is_in_queue(source):
                     s, t = source.peek(start_time, end_time)
                     if t is not None:
                         heapq.heappush(queue, (t, s))
+                        queue_cache[s] = True
 
             if not len(queue):
                 break
@@ -1150,6 +1154,7 @@ class Engine(EngineBase):
             time = queue[0][0]
             while len(queue) and time == queue[0][0]:
                 _, source = heapq.heappop(queue)
+                del queue_cache[source]
                 next_sources.append(source)
 
             self.current_time = time
@@ -1200,10 +1205,9 @@ class RealTimeEngine(EngineBase):
                 if max_wait > 0:
                     t, source = self.get_queue().get(block=True, timeout=max_wait)
                     if t > start_time:
-                        if self.current_time and t <= self.current_time:
-                            # FIXME: the diff is the engine delay
-                            t = self.current_time + timedelta(microseconds=self.interval)
-                        self.current_time = t
+                        now = datetime.datetime.now()
+                        assert self.current_time is None or self.current_time < now
+                        self.current_time = now
 
                         source.evaluate()
 
@@ -1305,13 +1309,16 @@ class RealTimeFixedTimer(RealTimeSource):
 
     def evaluate(self):
         self._output = True
+        self.debug(f'{self.name} eval')
 
     def start(self, start_time, end_time):
         def schedule():
             for t in self.timestamps:
                 wait = t - datetime.datetime.now()
                 if wait.total_seconds() > 0:
+                    self.info(f'sleep at {datetime.datetime.now()} for {wait.total_seconds()} until {t}')
                     time.sleep(wait.total_seconds())
+                    self.info(f'wake up at {datetime.datetime.now()} instead of {t}')
                 self.get_engine().get_queue().put((t, self))
 
         t = Thread(target=schedule)
