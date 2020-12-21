@@ -398,36 +398,56 @@ class FlowOps:
 
     def __sub__(self, other):
         if not isinstance(other, FlowBase):
-            other = Constant(other)
-            self.get_engine().add_source(other)
+            engine = self.get_engine()
+            if isinstance(engine, RealTimeEngine):
+                other = RealTimeConstant(other, engine)
+            else:
+                other = Constant(other)
+                engine.add_source(other)
 
         return MapN('sub(-)', lambda input1, input2: input1 - input2, self, other)
 
     def __rsub__(self, other):
         if not isinstance(other, FlowBase):
-            other = Constant(other)
-            self.get_engine().add_source(other)
+            engine = self.get_engine()
+            if isinstance(engine, RealTimeEngine):
+                other = RealTimeConstant(other, engine)
+            else:
+                other = Constant(other)
+                engine.add_source(other)
 
         return MapN('sub(-)', lambda input1, input2: input1 - input2, other, self)
 
     def __add__(self, other):
         if not isinstance(other, FlowBase):
-            other = Constant(other)
-            self.get_engine().add_source(other)
+            engine = self.get_engine()
+            if isinstance(engine, RealTimeEngine):
+                other = RealTimeConstant(other, engine)
+            else:
+                other = Constant(other)
+                engine.add_source(other)
 
         return MapN('add(+)', lambda input1, input2: input1 + input2, self, other)
 
     def __radd__(self, other):
         if not isinstance(other, FlowBase):
-            other = Constant(other)
-            self.get_engine().add_source(other)
+            engine = self.get_engine()
+            if isinstance(engine, RealTimeEngine):
+                other = RealTimeConstant(other, engine)
+            else:
+                other = Constant(other)
+                engine.add_source(other)
 
         return MapN('add(+)', lambda input1, input2: input1 + input2, other, self)
 
     def __pow__(self, other):
         if not isinstance(other, FlowBase):
-            other = Constant(other)
-            self.get_engine().add_source(other)
+            engine = self.get_engine()
+            if isinstance(engine, RealTimeEngine):
+                other = RealTimeConstant(other, engine)
+            else:
+                other = Constant(other)
+                engine.add_source(other)
 
         return MapN('pow(**)', lambda input1, input2: input1 ** input2, self, other)
 
@@ -442,15 +462,23 @@ class FlowOps:
 
     def __truediv__(self, other):
         if not isinstance(other, FlowBase):
-            other = Constant(other)
-            self.get_engine().add_source(other)
+            engine = self.get_engine()
+            if isinstance(engine, RealTimeEngine):
+                other = RealTimeConstant(other, engine)
+            else:
+                other = Constant(other)
+                engine.add_source(other)
 
         return MapN('div(/)', lambda input1, input2: input1 / input2, self, other)
 
     def __rtruediv__(self, other):
         if not isinstance(other, FlowBase):
-            other = Constant(other)
-            self.get_engine().add_source(other)
+            engine = self.get_engine()
+            if isinstance(engine, RealTimeEngine):
+                other = RealTimeConstant(other, engine)
+            else:
+                other = Constant(other)
+                engine.add_source(other)
 
         return MapN('div(/)', lambda input1, input2: input1 / input2, other, self)
 
@@ -471,8 +499,12 @@ class FlowOps:
 
     def compare(self, other, fun, name='compare'):
         if not isinstance(other, FlowBase):
-            other = Constant(other)
-            self.get_engine().add_source(other)
+            engine = self.get_engine()
+            if isinstance(engine, RealTimeEngine):
+                other = RealTimeConstant(other, engine)
+            else:
+                other = Constant(other)
+                engine.add_source(other)
 
         return MapN(name, lambda input1, input2: fun(input1, input2), self, other)
 
