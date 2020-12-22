@@ -1657,7 +1657,10 @@ class ToDict(Flow):
                 merged[self.keys[i]] = value
 
         if len(merged):
-            self << merged.copy() if self.keep_last else merged
+            if self.keep_last:
+                self << merged.copy()
+            else:
+                self << merged
 
 
 class Rolling(Flow):
