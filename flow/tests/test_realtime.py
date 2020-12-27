@@ -157,8 +157,8 @@ class TestRealTime(unittest.TestCase):
 
         engine.start(start_time, end_time)
         result = s()
-        print(raw_data)
-        print(result)
+        # print(raw_data)
+        # print(result)
 
         # engine.show_graph('timer')
 
@@ -175,6 +175,46 @@ class TestRealTime(unittest.TestCase):
         self.assertEqual(value, 6)
 
         t, value = result[3]
+        # self.assertEqual(t, input2_time)
+        self.assertEqual(value, 8)
+
+    def testSampleWithStartWith(self):
+        engine = RealTimeEngine(keep_history=True)
+
+        start_time = datetime.datetime.now()
+        end_time = start_time + datetime.timedelta(seconds=10)
+
+        raw_data = [
+            (start_time + datetime.timedelta(seconds=1), 1),
+            (start_time + datetime.timedelta(seconds=2), 2),
+            (start_time + datetime.timedelta(seconds=3), 3),
+            (start_time + datetime.timedelta(seconds=4), 4),
+            (start_time + datetime.timedelta(seconds=5), 5),
+            (start_time + datetime.timedelta(seconds=6), 6),
+            (start_time + datetime.timedelta(seconds=7), 7),
+            (start_time + datetime.timedelta(seconds=8), 8),
+        ]
+
+        data = RealTimeDataSource('data', engine, raw_data)
+
+        s = data.sample(datetime.timedelta(seconds=2), SampleMethod.Last, raw_data[3][0])
+
+        engine.start(start_time, end_time)
+        result = s()
+        # print(raw_data)
+        # print(result)
+
+        # engine.show_graph('timer')
+
+        t, value = result[0]
+        # self.assertEqual(t, input1_time + datetime.timedelta(seconds=0.5))
+        self.assertEqual(value, 4)
+
+        t, value = result[1]
+        # self.assertEqual(t, input2_time)
+        self.assertEqual(value, 6)
+
+        t, value = result[2]
         # self.assertEqual(t, input2_time)
         self.assertEqual(value, 8)
 

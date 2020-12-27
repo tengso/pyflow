@@ -368,11 +368,11 @@ class MetaFlow(type):
 
 
 class FlowOps:
-    def __getattr__(self, item):
-        # TODO: better check
-        if self.__class__ != Flow:
-            self.warn('created map for {}:{}', self, item)
-            return MapN(item, lambda value: getattr(value, item), self)
+    # def __getattr__(self, item):
+    #     # TODO: better check
+    #     if self.__class__ != Flow:
+    #         self.warn('created map for {}:{}', self, item)
+    #         return MapN(item, lambda value: getattr(value, item), self)
 
     def __mul__(self, other):
         if not isinstance(other, FlowBase):
@@ -563,8 +563,20 @@ class FlowOps:
     def map(self, map_fun, name='map'):
         return MapN(name, map_fun, self, timed=True)
 
-    def sample(self, interval: timedelta, method):
-        return Sample(self, interval, method)
+    def sample(self, interval: timedelta, method, start_time=None):
+        engine = self.get_engine()
+        if start_time is not None:
+            if isinstance(engine, RealTimeEngine):
+                start = RealTimeFixedTimer(engine, [start_time])
+            else:
+                start = FixedTimer(engine, [start_time])
+        else:
+            if isinstance(engine, RealTimeEngine):
+                start = RealTimeEmpty(engine)
+            else:
+                start = Empty(engine)
+
+        return Sample(self, start, interval, method, is_auto_start=start_time is None)
 
     def fast_sample(self):
         return FastSample(self)
@@ -1351,9 +1363,9 @@ class RealTimeFixedTimer(RealTimeSource):
             for t in self.timestamps:
                 wait = t - datetime.datetime.now()
                 if wait.total_seconds() > 0:
-                    self.info(f'sleep at {datetime.datetime.now()} for {wait.total_seconds()} until {t}')
+                    self.debug(f'sleep at {datetime.datetime.now()} for {wait.total_seconds()} until {t}')
                     time.sleep(wait.total_seconds())
-                    self.info(f'wake up at {datetime.datetime.now()} instead of {t}')
+                    self.debug(f'wake up at {datetime.datetime.now()} instead of {t}')
                 self.get_engine().get_queue().put((t, self))
 
         t = Thread(target=schedule)
@@ -1507,15 +1519,26 @@ class SampleMethod(Enum):
 
 class Sample(Flow):
     input = Input()
+    start = Input()
+
     timer = Timer()
 
-    def __init__(self, input, interval: datetime.timedelta, method=SampleMethod.Last):
+    def __init__(self, input, start, interval: datetime.timedelta, method=SampleMethod.Last, is_auto_start=False):
         super().__init__('sample')
         self.interval = interval
         self.first_cache = None
         self.last_cache = None
         self.started = False
         self.method = method
+        self.is_auto_start = is_auto_start
+
+    @when(start)
+    def handle(self):
+        if not self.started:
+            self.timer = self.now()
+            self.first_cache = self.input()
+            self.last_cache = self.input()
+            self.started = True
 
     @when(timer)
     def handle(self):
@@ -1533,8 +1556,7 @@ class Sample(Flow):
         if self.first_cache is None:
             self.first_cache = self.input()
         self.last_cache = self.input()
-
-        if not self.started:
+        if self.is_auto_start and not self.started:
             self.timer = self.now() + self.interval
             self.started = True
 
