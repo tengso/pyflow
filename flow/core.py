@@ -511,6 +511,9 @@ class FlowOps:
     def filter(self, filter_fun, name='filter'):
         return Filter(self, filter_fun, name)
 
+    def filter_by(self, filter_value, filter_fun, name='filter_by'):
+        return FilterBy(self, filter_value, filter_fun, name)
+
     def restrict(self, restrict_fun):
         return Restrict(self, restrict_fun)
 
@@ -1506,7 +1509,7 @@ class Sample(Flow):
     input = Input()
     timer = Timer()
 
-    def __init__(self, input, interval, method=SampleMethod.Last):
+    def __init__(self, input, interval: datetime.timedelta, method=SampleMethod.Last):
         super().__init__('sample')
         self.interval = interval
         self.first_cache = None
@@ -1713,4 +1716,18 @@ class Start(Flow):
         if self.now() >= self.asof:
             self << self.value()
 
+
+class FilterBy(Flow):
+    value = Input()
+    filter = Input()
+
+    def __init__(self, value, filter, filter_fun, name='filter_by'):
+        super().__init__(name)
+        self.filter_fun = filter_fun
+
+    @when(value)
+    def handle(self):
+        if self.filter.has_value():
+            if self.filter_fun(self.filter()):
+                self << self.value()
 
