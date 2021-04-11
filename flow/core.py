@@ -602,6 +602,9 @@ class FlowOps:
     def start(self, asof: datetime.datetime):
         return Start(self, asof)
 
+    def select(self, n=1):
+        return Select(self, n)
+
 
 class FlowBase(FlowOps):
     _output = Output()
@@ -802,13 +805,14 @@ class Feedback(Source):
         self.feedback = feedback
 
     def check(self, start_time, end_time):
-        input = self.get_inputs()[0]
-        feedback_value = input.get_parent().get_last_value_with_time()
-        if feedback_value is not None:
-            time = feedback_value[0]
-            if time not in self.processed:
-                self.processed.add(time)
-                return self, time + timedelta(microseconds=self.engine.get_interval())
+        if len(self.get_inputs()):
+            input = self.get_inputs()[0]
+            feedback_value = input.get_parent().get_last_value_with_time()
+            if feedback_value is not None:
+                time = feedback_value[0]
+                if time not in self.processed:
+                    self.processed.add(time)
+                    return self, time + timedelta(microseconds=self.engine.get_interval())
 
         return self, None
 
@@ -1753,3 +1757,20 @@ class FilterBy(Flow):
             if self.filter_fun(self.filter()):
                 self << self.value()
 
+
+class Select(Flow):
+    value = Input()
+
+    def __init__(self, value, n=1):
+        super().__init__('select')
+        self.n = n
+        self.is_selected = False
+        self.cache = []
+
+    @when(value)
+    def handle(self):
+        if not self.is_selected:
+            self.cache.append(self.value())
+            if len(self.cache) > self.n - 1:
+                self.is_selected = True
+                self << self.cache[self.n - 1]
